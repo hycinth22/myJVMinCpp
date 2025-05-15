@@ -1,10 +1,7 @@
 #include <fstream>
 #include <vector>
-#include <stack>
 #include <cstdint>
 #include <string>
-#include <map>
-#include <memory>
 #include <fmt/core.h>
 #include "interpreter.h"
 
