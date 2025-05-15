@@ -1,0 +1,11 @@
+# CMake生成的文件
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
+Makefile
+*.cmake
+build/
+
+# testcase
+*.java
+*.class
