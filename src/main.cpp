@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
             interpreter.class_loader.add_search_dir(input_dir);
         }
         fmt::print("Interpreter running\n");
-        std::vector<int32_t> args(1);
+        std::vector<SlotT> args(1);
         interpreter.execute(class_name, "main", "([Ljava/lang/String;)V", args);
         fmt::print("Main done\n");
     } catch (const std::exception& e) {

@@ -20,15 +20,15 @@ public:
         new_object();
     }
     // 执行指定方法
-    std::optional<int32_t> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<int32_t>& args);
+    std::optional<SlotT> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<SlotT>& args);
     // 根据方法名和描述符查找方法
     MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor);
     // 分配新对象，返回对象引用（索引）
     int new_object();
     // 设置对象字段
-    void put_field(int obj_ref, const std::string& field, int32_t value);
+    void put_field(int obj_ref, const std::string& field, SlotT value);
     // 获取对象字段
-    int32_t get_field(int obj_ref, const std::string& field);
+    SlotT get_field(int obj_ref, const std::string& field);
 
 private:
     // 对象池，包含堆对象和static对象
@@ -39,8 +39,8 @@ private:
     void init_opcode_table();
 
     void resolve_getstatic(const ClassInfo& cf, uint16_t index, Frame& frame);
-    void execute_instruction(const std::vector<ConstantPoolInfo>& constant_pool, const std::vector<uint8_t>& code, size_t& pc, std::vector<int32_t>& stack, std::vector<int32_t>& locals);
-    std::optional<int32_t> _execute(ClassInfo& cf, const MethodInfo& method, const std::vector<int32_t>& args);
+    void execute_instruction(const std::vector<ConstantPoolInfo>& constant_pool, const std::vector<uint8_t>& code, size_t& pc, std::vector<SlotT>& stack, std::vector<SlotT>& locals);
+    std::optional<SlotT> _execute(ClassInfo& cf, const MethodInfo& method, const std::vector<SlotT>& args);
 
     ClassInfo& load_class(const std::string& class_name) {
         return class_loader.load_class(class_name);
