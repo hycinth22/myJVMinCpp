@@ -13,10 +13,18 @@ uint16_t read_u2_from_code(const std::vector<uint8_t>& code, size_t pc) {
 }
 
 // 根据方法名和描述符查找方法
-MethodInfo* Interpreter::find_method(ClassFile& cf, const std::string& name, const std::string& descriptor) {
+MethodInfo* Interpreter::find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor) {
     for (auto& m : cf.methods) {
         if (m.name == name && m.descriptor == descriptor) {
             return &m;
+        }
+    }
+    // 查父类
+    if (cf.super_class != 0) {
+        std::string super_name = cf.constant_pool.get_class_name(cf.super_class);
+        if (super_name != "java/lang/Object") {
+            ClassInfo& super_cf = load_class(super_name);
+            return find_method(super_cf, name, descriptor);
         }
     }
     return nullptr;
@@ -40,25 +48,37 @@ int count_method_args(const std::string& desc) {
 }
 
 // 执行指定的方法
-std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& method, const std::vector<int32_t>& args) {
-    auto installFrame = [](const std::string& _classname, const MethodInfo& _method, const std::vector<int32_t>& _args) {
-        Frame frame(_method.max_locals, _method.max_stack, _classname, _method);
+std::optional<int32_t> Interpreter::execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<int32_t>& args) {
+    ClassInfo& cf = load_class(class_name);
+    MethodInfo* method = find_method(cf, method_name, method_desc);
+    if (!method) {
+        fmt::print("[execute] cannot find method {}.{} {}\n", class_name, method_name, method_desc);
+        return {};
+    }
+    return _execute(cf, *method, args);
+}
+
+std::optional<int32_t> Interpreter::_execute(ClassInfo& entry_class, const MethodInfo& entry_method, const std::vector<int32_t>& entry_args) {
+    auto installFrame = [](const ClassInfo& _class, const MethodInfo& _method, const std::vector<int32_t>& _args) {
+        Frame frame(_method.max_locals, _method.max_stack, _class, _method);
         for (int i=0; i<_args.size(); i++) {
             frame.local_vars[i] = _args[i];
         }
         thread.push_frame(frame);
     };
-    installFrame(cf.constant_pool.get_class_name(cf.this_class), method, args);
+    installFrame(entry_class, entry_method, entry_args);
     while (!thread.empty()) {
         Frame& cur_frame = thread.current_frame();
         auto &pc = cur_frame.pc;
-        auto &code = cur_frame.method.code;
+        auto &code = cur_frame.method_info.code;
+        auto &cf = cur_frame.class_info;
+        auto &classname = cf.constant_pool.get_class_name(cf.this_class);
         if (pc >= code.size()) {
             fmt::print("pc reach code end but no return");
             exit(1);
         }
         uint8_t opcode = code[pc++];
-        fmt::print("[execute] className:{} method: {}", cur_frame.classname, cur_frame.method.name);
+        fmt::print("[execute] className:{} method: {}", classname, cur_frame.method_info.name);
         fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
         switch (opcode) {
             case 0x00: // nop
@@ -80,6 +100,13 @@ std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& met
                     int8_t val = (int8_t)code[pc++];
                     cur_frame.operand_stack.push(val);
                     fmt::print("bipush: Put imm {} on the stack\n", val);
+                    break;
+                }
+                case 0x11: { // sipush
+                    int16_t val = (code[pc] << 8) | code[pc+1];
+                    pc += 2;
+                    cur_frame.operand_stack.push(val);
+                    fmt::print("sipush: Put imm {} on the stack\n", val);
                     break;
                 }
                 case 0x12: // ldc
@@ -316,11 +343,12 @@ std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& met
                         fmt::print("setup args[{}]={}\n", i, args[i]);
                     }
                     fmt::print("objref {} \n", args[0]);
-                    // 支持本类方法调用
-                    MethodInfo* target = find_method(cf, method_name, method_desc);
-                    if (target) {
+
+                    ClassInfo& target_class = load_class(class_name);
+                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
+                    if (target_method) {
                         // 设置新帧并压入被调用栈
-                        installFrame(class_name, *target, args);
+                        installFrame(target_class, *target_method, args);
                         break;
                     } else {
                         fmt::print("invokevirtual invaid method");
@@ -339,7 +367,6 @@ std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& met
                     auto class_name = cf.constant_pool.get_class_name(methodref_class_index);
                     auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
 
-                    fmt::print("name_type_idx: {}", name_type_idx);
                     fmt::print("[invokespecial] idx{} classname:{} method_name:{} method_desc:{}\n", idx, class_name, method_name, method_desc);
 
                     if (class_name=="java/lang/Object" && method_name=="<init>") {
@@ -358,10 +385,11 @@ std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& met
                     if (args[0]==0) break;
                     fmt::print("objref {} \n", args[0]);
 
-                    MethodInfo* target = find_method(cf, method_name, method_desc);
-                    if (target) {
+                    ClassInfo& target_class = load_class(class_name);
+                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
+                    if (target_method) {
                         // 设置新帧并压入被调用栈
-                        installFrame(class_name, *target, args);
+                        installFrame(target_class, *target_method, args);
                         break;
                     } else {
                         fmt::print("invokespecial invaid method");
@@ -388,11 +416,11 @@ std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& met
                         fmt::print("setup args[{}]={}\n", i, args[i]);
                     }
 
-                    // 支持本类静态方法调用
-                    MethodInfo* target = find_method(cf, method_name, method_desc);
-                    if (target) {
+                    ClassInfo& target_class = load_class(class_name);
+                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
+                    if (target_method) {
                         // 设置新帧并压入被调用栈
-                        installFrame(class_name, *target, args);
+                        installFrame(target_class, *target_method, args);
                         break;
                     } else {
                         fmt::print("invokestatic invaid method");
@@ -440,7 +468,7 @@ int32_t Interpreter::get_field(int obj_ref, const std::string& field) {
 }
 
 // 处理getstatic
-void Interpreter::resolve_getstatic(ClassFile& cf, uint16_t index, Frame& frame) {
+void Interpreter::resolve_getstatic(const ClassInfo& cf, uint16_t index, Frame& frame) {
     // 解析常量池
     const ConstantPoolInfo& fieldref = cf.constant_pool[index];
     uint16_t class_idx = fieldref.fieldref_class_index;

@@ -17,6 +17,14 @@ struct MethodInfo {
     uint16_t max_locals;
 };
 
+// 方法信息结构
+struct ClassInfo {
+    ConstantPool constant_pool;
+    std::vector<MethodInfo> methods;
+    uint16_t majorVer, minorVer;
+    uint16_t this_class, super_class;
+};
+
 // 局部变量表（本地变量区）
 class LocalVars {
 public:
@@ -39,9 +47,9 @@ struct Frame {
     LocalVars local_vars;
     OperandStack operand_stack;
     size_t pc; // 程序计数器
-    std::string classname;
-    const MethodInfo& method;
-    Frame(size_t max_locals, size_t max_stack, const std::string &classname, const MethodInfo& method) : local_vars(max_locals), operand_stack(), pc(0), method(method), classname(classname)  {}
+    const ClassInfo& class_info;
+    const MethodInfo& method_info;
+    Frame(size_t max_locals, size_t max_stack, const ClassInfo &class_info, const MethodInfo& method_info) : local_vars(max_locals), operand_stack(), pc(0), method_info(method_info), class_info(class_info)  {}
 };
 
 // JVM对象模型

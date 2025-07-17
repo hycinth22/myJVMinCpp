@@ -60,13 +60,4 @@ struct CodeAttribute {
     std::vector<AttributeInfo> attributes;
 };
 
-// 类文件结构
-class ClassFile {
-public:
-    ConstantPool constant_pool;
-    std::vector<MethodInfo> methods;
-    uint16_t majorVer, minorVer;
-    uint16_t this_class, super_class;
-};
-
 #endif //CONSTANTPOOLINFO_H

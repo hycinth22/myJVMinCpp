@@ -92,7 +92,7 @@ class ConstantPool {
         }
 
 
-        std::pair<std::string, std::string> get_name_and_type(uint16_t index) {
+        std::pair<std::string, std::string> get_name_and_type(uint16_t index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_name_and_type: index {} out of bound", index);
                 exit(1);

@@ -9,31 +9,35 @@
 #include <string>
 #include <optional>
 #include "runtime.h"
+#include "ClassLoader.h"
 
 class Interpreter {
-    // 对象池，模拟JVM堆
-    std::vector<JVMObject> object_pool;
 public:
+    ClassLoader class_loader; 
     Interpreter() {
         new_object();
         new_object();
     }
     // 执行指定方法
-    std::optional<int32_t> execute(ClassFile& cf, const MethodInfo& method, const std::vector<int32_t>& args);
+    std::optional<int32_t> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<int32_t>& args);
     // 根据方法名和描述符查找方法
-    MethodInfo* find_method(ClassFile& cf, const std::string& name, const std::string& descriptor);
+    MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor);
     // 分配新对象，返回对象引用（索引）
     int new_object();
     // 设置对象字段
     void put_field(int obj_ref, const std::string& field, int32_t value);
     // 获取对象字段
     int32_t get_field(int obj_ref, const std::string& field);
+
 private:
-    void resolve_getstatic(ClassFile& cf, uint16_t index, Frame& frame);
-    void resolve_ldc(ClassFile& cf, uint8_t index, Frame& frame);
-    void resolve_invokevirtual(ClassFile& cf, uint16_t index, Frame& frame);
-    // 处理栈操作、算术、控制流等指令
+    // 对象池，包含堆对象和static对象
+    std::vector<JVMObject> object_pool;
+    void resolve_getstatic(const ClassInfo& cf, uint16_t index, Frame& frame);
     void execute_instruction(const std::vector<ConstantPoolInfo>& constant_pool, const std::vector<uint8_t>& code, size_t& pc, std::vector<int32_t>& stack, std::vector<int32_t>& locals);
+    std::optional<int32_t> _execute(ClassInfo& cf, const MethodInfo& method, const std::vector<int32_t>& args);
+    ClassInfo& load_class(const std::string& class_name) {
+        return class_loader.load_class(class_name);
+    }
 };
 
 #endif // INTERPRETER_H
