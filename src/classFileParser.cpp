@@ -39,9 +39,8 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
     // 解析常量池
     uint16_t cp_count = read_u2(in);
     for (int i = 1; i < cp_count; ++i) { // 常量池索引从1开始
-        uint8_t tag;
-        in.read(reinterpret_cast<char*>(&tag), 1);
-        // fmt::print("parsing tag type: {}\n", tag);
+        uint8_t tag = read_u1(in);
+        fmt::print("parsing tag type: {}\n", tag);
         ConstantPoolInfo cp_info;
         cp_info.tag = tag;
         switch (tag) {
@@ -74,7 +73,11 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
             {
                 cp_info.longOrDouble_high_bytes = read_u4(in);
                 cp_info.longOrDouble_low_bytes = read_u4(in);
-                break;
+                class_file.constant_pool.add_constant(cp_info);
+                i++; // 跳过下一个无效槽
+                cp_info.tag = 0;
+                class_file.constant_pool.add_constant(cp_info);
+                continue;
             }
             case 12: { // CONSTANT_NameAndType
                 cp_info.name_index = read_u2(in);

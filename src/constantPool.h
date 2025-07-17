@@ -65,6 +65,9 @@ class ConstantPool {
         ConstantPoolInfo& operator[](size_t idx) { return pool[idx]; }
         // 打印所有常量池内容
         void print_all() const;
+        void add_constant(const ConstantPoolInfo & c) {
+            pool.push_back(c);
+        } 
         void add_constant(ConstantPoolInfo && c) {
             pool.push_back(std::move(c));
         } 
