@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 #include "interpreter.h"
 #include "runtime.h"
+#include <functional>
 
 JVMThread thread;
 
@@ -58,7 +59,345 @@ std::optional<int32_t> Interpreter::execute(const std::string& class_name, const
     return _execute(cf, *method, args);
 }
 
+void Interpreter::init_opcode_table() {
+    opcode_table.resize(256, [](Frame&, size_t&pc, const std::vector<uint8_t>&code, const ClassInfo&, Interpreter&) {
+        fmt::print("暂不支持的字节码 {:x}\n", code[pc-1]);
+        exit(1);
+    });
+    // nop
+    opcode_table[0x00] = [](Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {};
+    // iconst_0 ~ iconst_5
+    for (int opcode = 0x03; opcode <= 0x08; ++opcode) {
+        opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+            int constval = opcode - 0x03;
+            cur_frame.operand_stack.push(constval);
+            fmt::print("Put constant {} on the stack\n", constval);
+        };
+    }
+    // bipush
+    opcode_table[0x10] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int8_t val = (int8_t)code[pc++];
+        cur_frame.operand_stack.push(val);
+        fmt::print("bipush: Put imm {} on the stack\n", val);
+    };
+    // sipush
+    opcode_table[0x11] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int16_t val = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        cur_frame.operand_stack.push(val);
+        fmt::print("sipush: Put imm {} on the stack\n", val);
+    };
+    // ldc
+    opcode_table[0x12] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter&) {
+        uint8_t idx = code[pc++];
+        const ConstantPoolInfo& cpe = cf.constant_pool[idx];
+        if (cpe.tag == ConstantType::INTEGER || cpe.tag == ConstantType::FLOAT) {
+            cur_frame.operand_stack.push(cpe.integerOrFloat);
+        } else {
+            fmt::print("[ldc] 暂不支持的常量类型 tag={}\n", (int)cpe.tag);
+            exit(1);
+        }
+    };
+    // iload_0 ~ iload_3
+    for (int opcode = 0x1a; opcode <= 0x1d; ++opcode) {
+        opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+            int local_index = opcode - 0x1a;
+            cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
+            fmt::print("Load int from local variable. index {} val {}\n", local_index, cur_frame.local_vars[local_index]);
+        };
+    }
+    // aload_0 ~ aload_3: Load reference from local variable
+    for (int opcode = 0x2a; opcode <= 0x2d; ++opcode) {
+        opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+            int local_index = opcode - 0x2a;
+            cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
+            fmt::print("aload: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
+        };
+    }
+    // istore
+    opcode_table[0x36] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        uint8_t idx = code[pc++];
+        cur_frame.local_vars[idx] = cur_frame.operand_stack.pop();
+    };
+    // istore_0 ~ istore_3: Store int into local variable
+    for (int opcode = 0x3b; opcode <= 0x3e; ++opcode) {
+        opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+            int local_index = opcode - 0x3b;
+            cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
+            fmt::print("istore: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
+        };
+    }
+    // astore_0 ~ astore_3: Store reference into local variable
+    for (int opcode = 0x4b; opcode <= 0x4e; ++opcode) {
+        opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+            int local_index = opcode - 0x4b;
+            cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
+            fmt::print("astore: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
+        };
+    }
+    // dup: Duplicate the top operand stack value
+    opcode_table[0x59] = [](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+        int32_t val = cur_frame.operand_stack.stack.back();
+        cur_frame.operand_stack.push(val);
+        fmt::print("dup: dupicate the val {} on the stack\n", val);
+    };
+    // iadd
+    opcode_table[0x60] = [](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        fmt::print("iadd {} + {}\n", v1, v2);
+        cur_frame.operand_stack.push(v1 + v2);
+    };
+    // iinc
+    opcode_table[0x84] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>&code, const ClassInfo&, Interpreter&) {
+        uint8_t idx = code[pc++];
+        int8_t inc = (int8_t)code[pc++];
+        cur_frame.local_vars[idx] += inc;
+    };
+    // if_icmpeq
+    opcode_table[0x9f] = [](Frame& cur_frame, size_t&pc, const std::vector<uint8_t>&code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 == v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // if_icmpne
+    opcode_table[0xa0] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 != v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // if_icmplt
+    opcode_table[0xa1] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 < v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // if_icmpge
+    opcode_table[0xa2] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 >= v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // if_icmpgt
+    opcode_table[0xa3] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 > v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // if_icmple
+    opcode_table[0xa4] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int32_t v2 = cur_frame.operand_stack.pop();
+        int32_t v1 = cur_frame.operand_stack.pop();
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        if (v1 <= v2) {
+            pc = (size_t)((int)pc + offset - 3);
+        }
+    };
+    // goto
+    opcode_table[0xa7] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
+        int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+        pc += 2;
+        pc = (size_t)((int)pc + offset - 3); // -3: opcode+2字节已读
+    };
+    // ireturn
+    opcode_table[0xac] = [](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        int32_t ret = cur_frame.operand_stack.pop();
+        thread.pop_frame();
+        if (!thread.empty()) {
+            thread.current_frame().operand_stack.push(ret);
+        }
+    };
+    // return
+    opcode_table[0xb1] = [](Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        thread.pop_frame();
+    };
+    // getstatic
+    opcode_table[0xb2] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        interp.resolve_getstatic(cf, idx, cur_frame);
+    };
+    // getfield
+    opcode_table[0xb4] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        int16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        // 解析字段名和类型
+        const ConstantPoolInfo& fieldref = cf.constant_pool[idx];
+        uint16_t name_type_idx = fieldref.fieldref_name_type_index;
+        auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+        int obj_ref = cur_frame.operand_stack.pop();
+        int32_t val = interp.get_field(obj_ref, field_name);
+        cur_frame.operand_stack.push(val);
+        fmt::print("getfield: get obj:{} field:{} val:{}\n", obj_ref, field_name, val);
+    };
+    // putfield
+    opcode_table[0xb5] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        int16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        // 解析字段名和类型
+        const ConstantPoolInfo& fieldref = cf.constant_pool[idx];
+        uint16_t name_type_idx = fieldref.fieldref_name_type_index;
+        auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+        int32_t val = cur_frame.operand_stack.pop();
+        int obj_ref = cur_frame.operand_stack.pop();
+        interp.put_field(obj_ref, field_name, val);
+        fmt::print("putfield: set obj:{} field:{} val:{}\n", obj_ref, field_name, val);
+    };
+    // invokevirtual
+    opcode_table[0xb6] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        const ConstantPoolInfo& methodref = cf.constant_pool[idx];
+        uint16_t class_idx = methodref.methodref_class_index;
+        uint16_t name_type_idx = methodref.methodref_name_type_index;
+        std::string class_name = cf.constant_pool.get_utf8_str(cf.constant_pool[class_idx].class_name_index);
+        auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+
+        // 特殊处理System.out.println
+        if (class_name == "java/io/PrintStream" && method_name == "println") {
+            int32_t val = cur_frame.operand_stack.pop(); // 要打印的值
+            int obj_ref = cur_frame.operand_stack.pop(); // System.out对象引用
+            fmt::print("[System.out.println] {}\n", val);
+            return;
+        }
+        fmt::print("[invokevirtual] classname:{} method_name:{} method_desc:{}\n", class_name.c_str(), method_name.c_str(), method_desc.c_str());
+
+        // 弹出参数
+        int arg_count = count_method_args(method_desc);
+        arg_count++; // obj ref
+        std::vector<int32_t> args(arg_count);
+        for (int i = arg_count - 1; i >= 0; --i) {
+            args[i] = cur_frame.operand_stack.pop();
+            fmt::print("setup args[{}]={}\n", i, args[i]);
+        }
+        fmt::print("objref {} \n", args[0]);
+        ClassInfo& target_class = interp.load_class(class_name);
+        MethodInfo* target_method = interp.find_method(target_class, method_name, method_desc);
+        if (target_method) {
+            // 设置新帧并压入被调用栈
+            auto installFrame = [](const ClassInfo& _class, const MethodInfo& _method, const std::vector<int32_t>& _args) {
+                Frame frame(_method.max_locals, _method.max_stack, _class, _method);
+                for (int i=0; i<_args.size(); i++) {
+                    frame.local_vars[i] = _args[i];
+                }
+                thread.push_frame(frame);
+            };
+            installFrame(target_class, *target_method, args);
+        } else {
+            fmt::print("invokevirtual invaid method");
+            exit(1);
+        }
+    };
+    // invokespecial
+    opcode_table[0xb7] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
+        uint16_t methodref_class_index = cp_entry.methodref_class_index;
+        uint16_t name_type_idx = cp_entry.methodref_name_type_index;
+        auto class_name = cf.constant_pool.get_class_name(methodref_class_index);
+        auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+        fmt::print("[invokespecial] idx{} classname:{} method_name:{} method_desc:{}\n", idx, class_name, method_name, method_desc);
+
+        if (class_name=="java/lang/Object" && method_name=="<init>") {
+            // todo: remove here if implement multilclass
+            return;
+        }
+
+        // 弹出参数
+        int arg_count = count_method_args(method_desc);
+        arg_count++; // object ref
+        std::vector<int32_t> args(arg_count);
+        for (int i = arg_count - 1; i >= 0; --i) {
+            args[i] = cur_frame.operand_stack.pop();
+            fmt::print("setup args[{}]={}\n", i, args[i]);
+        }
+        if (args[0]==0) return;
+        fmt::print("objref {} \n", args[0]);
+
+        ClassInfo& target_class = interp.load_class(class_name);
+        MethodInfo* target_method = interp.find_method(target_class, method_name, method_desc);
+        if (target_method) {
+            auto installFrame = [](const ClassInfo& _class, const MethodInfo& _method, const std::vector<int32_t>& _args) {
+                Frame frame(_method.max_locals, _method.max_stack, _class, _method);
+                for (int i=0; i<_args.size(); i++) {
+                    frame.local_vars[i] = _args[i];
+                }
+                thread.push_frame(frame);
+            };
+            installFrame(target_class, *target_method, args);
+        } else {
+            fmt::print("invokespecial invaid method");
+            exit(1);
+        }
+    };
+    // invokestatic
+    opcode_table[0xb8] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (code[pc] << 8) | code[pc+1];
+        pc += 2;
+        const ConstantPoolInfo& methodref = cf.constant_pool[idx];
+        uint16_t class_idx = methodref.methodref_class_index;
+        uint16_t name_type_idx = methodref.methodref_name_type_index;
+        std::string class_name = cf.constant_pool.get_utf8_str(cf.constant_pool[class_idx].class_name_index);
+        auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+        fmt::print("[invokestatic] classname:{} method_name:{} method_desc:{}\n", class_name.c_str(), method_name.c_str(), method_desc.c_str());
+
+        // 弹出参数
+        int arg_count = count_method_args(method_desc);
+        std::vector<int32_t> args(arg_count);
+        for (int i = arg_count - 1; i >= 0; --i) {
+            args[i] = cur_frame.operand_stack.pop();
+            fmt::print("setup args[{}]={}\n", i, args[i]);
+        }
+
+        ClassInfo& target_class = interp.load_class(class_name);
+        MethodInfo* target_method = interp.find_method(target_class, method_name, method_desc);
+        if (target_method) {
+            auto installFrame = [](const ClassInfo& _class, const MethodInfo& _method, const std::vector<int32_t>& _args) {
+                Frame frame(_method.max_locals, _method.max_stack, _class, _method);
+                for (int i=0; i<_args.size(); i++) {
+                    frame.local_vars[i] = _args[i];
+                }
+                thread.push_frame(frame);
+            };
+            installFrame(target_class, *target_method, args);
+        } else {
+            fmt::print("invokestatic invaid method");
+            exit(1);
+        }
+    };
+    // new
+    opcode_table[0xbb] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter& interp) {
+        pc += 2; // 跳过常量池索引
+        int obj_ref = interp.new_object();
+        cur_frame.operand_stack.push(obj_ref);
+        fmt::print("alloc new object {}\n", obj_ref);
+    };
+}
+
 std::optional<int32_t> Interpreter::_execute(ClassInfo& entry_class, const MethodInfo& entry_method, const std::vector<int32_t>& entry_args) {
+    if (opcode_table.empty()) init_opcode_table();
     auto installFrame = [](const ClassInfo& _class, const MethodInfo& _method, const std::vector<int32_t>& _args) {
         Frame frame(_method.max_locals, _method.max_stack, _class, _method);
         for (int i=0; i<_args.size(); i++) {
@@ -80,372 +419,11 @@ std::optional<int32_t> Interpreter::_execute(ClassInfo& entry_class, const Metho
         uint8_t opcode = code[pc++];
         fmt::print("[execute] className:{} method: {}", classname, cur_frame.method_info.name);
         fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
-        switch (opcode) {
-            case 0x00: // nop
-                break;
-                case 0x3: // iconst_0
-                case 0x4: // iconst_1
-                case 0x5: // iconst_2
-                case 0x6: // iconst_3
-                case 0x7: // iconst_4
-                case 0x8: // iconst_5
-                {
-                    int constval = opcode - 0x3;
-                    cur_frame.operand_stack.push(constval);
-                    fmt::print("Put constant {} on the stack\n", constval);
-                    break;
-                }
-                case 0x10: // bipush
-                {
-                    int8_t val = (int8_t)code[pc++];
-                    cur_frame.operand_stack.push(val);
-                    fmt::print("bipush: Put imm {} on the stack\n", val);
-                    break;
-                }
-                case 0x11: { // sipush
-                    int16_t val = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    cur_frame.operand_stack.push(val);
-                    fmt::print("sipush: Put imm {} on the stack\n", val);
-                    break;
-                }
-                case 0x12: // ldc
-                {
-                    uint8_t idx = code[pc++];
-                    const ConstantPoolInfo& cpe = cf.constant_pool[idx];
-                    if (cpe.tag == ConstantType::INTEGER || cpe.tag == ConstantType::FLOAT) {
-                        cur_frame.operand_stack.push(cpe.integerOrFloat);
-                    } else {
-                        fmt::print("[ldc] 暂不支持的常量类型 tag={}\n", (int)cpe.tag);
-                        exit(1);
-                    }
-                    break;
-                }
-                case 0x1a: // iload_0
-                case 0x1b: // iload_1
-                case 0x1c: // iload_2
-                case 0x1d: // iload_3
-                { // Load int from local variable
-                    int local_index = opcode - 0x1a;
-                    cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
-                    fmt::print("Load int from local variable. index {} val {}\n", local_index, cur_frame.local_vars[local_index]);
-                    break;
-                }
-                case 0x2a: // aload_0
-                case 0x2b: // aload_1
-                case 0x2c: // aload_2
-                case 0x2d: // aload_3
-                { // Load reference from local variable
-                    int local_index = opcode - 0x2a;
-                    cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
-                    fmt::print("aload: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
-                    break;
-                }
-                case 0x36: // istore
-                { // Store int into local variable
-                    uint8_t idx = code[pc++];
-                    cur_frame.local_vars[idx] = cur_frame.operand_stack.pop();
-                    break;
-                }
-                case 0x3b: // istore_0
-                case 0x3c: // istore_1
-                case 0x3d: // istore_2
-                case 0x3e: // istore_3
-                { // Store int into local variable
-                    int local_index = opcode - 0x3b;
-                    cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
-                    fmt::print("istore: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
-                    break;
-                }
-                case 0x4b: // astore_0  
-                case 0x4c: // astore_1
-                case 0x4d: // astore_2
-                case 0x4e: // astore_3
-                { // Store reference into local variable
-                    int local_index = opcode - 0x4b;
-                    cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
-                    fmt::print("astore: local{} = {}\n", local_index, cur_frame.local_vars[local_index]);
-                    break;
-                }
-                case 0x59: // dup
-                { // Duplicate the top operand stack value
-                    int32_t val = cur_frame.operand_stack.stack.back();
-                    cur_frame.operand_stack.push(val);
-                    fmt::print("dup: dupicate the val {} on the stack\n", val);
-                    break;
-                }
-                case 0x60: // iadd
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    fmt::print("iadd {} + {}\n", v1, v2);
-                    cur_frame.operand_stack.push(v1 + v2);
-                    break;
-                }
-                case 0x84: // iinc
-                {
-                    uint8_t idx = code[pc++];
-                    int8_t inc = (int8_t)code[pc++];
-                    cur_frame.local_vars[idx] += inc;
-                    break;
-                }
-                case 0x9f: // if_icmpeq
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 == v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa0: // if_icmpne
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 != v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa1: // if_icmplt
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 < v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa2: // if_icmpge
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 >= v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa3: // if_icmpgt
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 > v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa4: // if_icmple
-                {
-                    int32_t v2 = cur_frame.operand_stack.pop();
-                    int32_t v1 = cur_frame.operand_stack.pop();
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    if (v1 <= v2) {
-                        pc = (size_t)((int)pc + offset - 3);
-                    }
-                    break;
-                }
-                case 0xa7: // goto
-                {
-                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
-                    pc += 2;
-                    pc = (size_t)((int)pc + offset - 3); // -3: opcode+2字节已读
-                    break;
-                }
-                case 0xac: // ireturn
-                { // int方法返回
-                    int32_t ret = cur_frame.operand_stack.pop();
-                    thread.pop_frame();
-                    if (thread.empty()) {
-                        return ret; // program exit
-                    }
-                    thread.current_frame().operand_stack.push(ret);
-                    break;
-                }
-                case 0xb1: // return
-                { // void方法返回
-                    thread.pop_frame();
-                    if (thread.empty()) {
-                        return {}; // program exit
-                    }
-                    break;
-                }
-                case 0xb2: // getstatic
-                {
-                    uint16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    resolve_getstatic(cf, idx, cur_frame);
-                    break;
-                }
-                case 0xb4: // getfield
-                {
-                    int16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    // 解析字段名和类型
-                    const ConstantPoolInfo& fieldref = cf.constant_pool[idx];
-                    uint16_t name_type_idx = fieldref.fieldref_name_type_index;
-                    auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-                    int obj_ref = cur_frame.operand_stack.pop();
-                    int32_t val = get_field(obj_ref, field_name);
-                    cur_frame.operand_stack.push(val);
-                    fmt::print("getfield: get obj:{} field:{} val:{}\n", obj_ref, field_name, val);
-                    break;
-                }
-                case 0xb5: // putfield
-                {
-                    int16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    // 解析字段名和类型
-                    const ConstantPoolInfo& fieldref = cf.constant_pool[idx];
-                    uint16_t name_type_idx = fieldref.fieldref_name_type_index;
-                    auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-                    int32_t val = cur_frame.operand_stack.pop();
-                    int obj_ref = cur_frame.operand_stack.pop();
-                    put_field(obj_ref, field_name, val);
-                    fmt::print("putfield: set obj:{} field:{} val:{}\n", obj_ref, field_name, val);
-                    break;
-                }
-                case 0xb6: // invokevirtual
-                {
-                    uint16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    // 解析常量池，获取方法所属类名、方法名和描述符
-                    const ConstantPoolInfo& methodref = cf.constant_pool[idx];
-                    uint16_t class_idx = methodref.methodref_class_index;
-                    uint16_t name_type_idx = methodref.methodref_name_type_index;
-                    std::string class_name = cf.constant_pool.get_utf8_str(cf.constant_pool[class_idx].class_name_index);
-                    auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-                    // 特殊处理System.out.println
-                    if (class_name == "java/io/PrintStream" && method_name == "println") {
-                        int32_t val = cur_frame.operand_stack.pop(); // 要打印的值
-                        int obj_ref = cur_frame.operand_stack.pop(); // System.out对象引用
-
-                        fmt::print("[System.out.println] {}\n", val);
-                        break;
-                    }
-                    fmt::print("[invokevirtual] classname:{} method_name:{} method_desc:{}\n", class_name.c_str(), method_name.c_str(), method_desc.c_str());
-                    // 弹出参数
-                    int arg_count = count_method_args(method_desc);
-                    arg_count++; // obj ref
-                    std::vector<int32_t> args(arg_count);
-                    for (int i = arg_count - 1; i >= 0; --i) {
-                        args[i] = cur_frame.operand_stack.pop();
-                        fmt::print("setup args[{}]={}\n", i, args[i]);
-                    }
-                    fmt::print("objref {} \n", args[0]);
-
-                    ClassInfo& target_class = load_class(class_name);
-                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
-                    if (target_method) {
-                        // 设置新帧并压入被调用栈
-                        installFrame(target_class, *target_method, args);
-                        break;
-                    } else {
-                        fmt::print("invokevirtual invaid method");
-                        exit(1);
-                    }
-                    break;
-                }
-                case 0xb7: // invokespecial
-                {
-                    uint16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    // 解析常量池，查找方法名和描述符
-                    const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
-                    uint16_t methodref_class_index = cp_entry.methodref_class_index;
-                    uint16_t name_type_idx = cp_entry.methodref_name_type_index;
-                    auto class_name = cf.constant_pool.get_class_name(methodref_class_index);
-                    auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-
-                    fmt::print("[invokespecial] idx{} classname:{} method_name:{} method_desc:{}\n", idx, class_name, method_name, method_desc);
-
-                    if (class_name=="java/lang/Object" && method_name=="<init>") {
-                        // todo: remove here if implement multilclass
-                        break;
-                    }
-
-                     // 弹出参数
-                    int arg_count = count_method_args(method_desc);
-                    arg_count++; // object ref
-                    std::vector<int32_t> args(arg_count);
-                    for (int i = arg_count - 1; i >= 0; --i) {
-                        args[i] = cur_frame.operand_stack.pop();
-                        fmt::print("setup args[{}]={}\n", i, args[i]);
-                    }
-                    if (args[0]==0) break;
-                    fmt::print("objref {} \n", args[0]);
-
-                    ClassInfo& target_class = load_class(class_name);
-                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
-                    if (target_method) {
-                        // 设置新帧并压入被调用栈
-                        installFrame(target_class, *target_method, args);
-                        break;
-                    } else {
-                        fmt::print("invokespecial invaid method");
-                        exit(1);
-                    }
-                    break;
-                }
-                case 0xb8: // invokestatic
-                {
-                    uint16_t idx = (code[pc] << 8) | code[pc+1];
-                    pc += 2;
-                    // 解析常量池，获取方法所属类名、方法名和描述符
-                    const ConstantPoolInfo& methodref = cf.constant_pool[idx];
-                    uint16_t class_idx = methodref.methodref_class_index;
-                    uint16_t name_type_idx = methodref.methodref_name_type_index;
-                    std::string class_name = cf.constant_pool.get_utf8_str(cf.constant_pool[class_idx].class_name_index);
-                    auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-                    fmt::print("[invokestatic] classname:{} method_name:{} method_desc:{}\n", class_name.c_str(), method_name.c_str(), method_desc.c_str());
-                    // 弹出参数
-                    int arg_count = count_method_args(method_desc);
-                    std::vector<int32_t> args(arg_count);
-                    for (int i = arg_count - 1; i >= 0; --i) {
-                        args[i] = cur_frame.operand_stack.pop();
-                        fmt::print("setup args[{}]={}\n", i, args[i]);
-                    }
-
-                    ClassInfo& target_class = load_class(class_name);
-                    MethodInfo* target_method = find_method(target_class, method_name, method_desc);
-                    if (target_method) {
-                        // 设置新帧并压入被调用栈
-                        installFrame(target_class, *target_method, args);
-                        break;
-                    } else {
-                        fmt::print("invokestatic invaid method");
-                        exit(1);
-                    }
-                    break;
-                }
-                case 0xbb: // new
-                {
-                    pc += 2; // 跳过常量池索引
-                    int obj_ref = new_object();
-                    cur_frame.operand_stack.push(obj_ref);
-                    fmt::print("alloc new object {}\n", obj_ref);
-                    break;
-                }
-            default:
-                fmt::print("暂不支持的字节码 0x{:x}\n", (int)opcode);
-                return {};
-        }
+        opcode_table[opcode](cur_frame, pc, code, cf, *this);
         cur_frame.pc = pc;
     }
-    fmt::print("pc reach code end end but no return");
-    exit(1);
+    return {};
 }
-
 
 // 分配新对象，返回对象引用（索引）
 int Interpreter::new_object() {
