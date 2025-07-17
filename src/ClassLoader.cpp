@@ -32,9 +32,7 @@ ClassInfo& ClassLoader::load_class(const std::string& class_name) {
     auto it = class_table.find(class_name);
     if (it != class_table.end()) return it->second;
 
-    // 先查找目录，确认文件存在
     std::string filename = find_class_file(class_name);
-
     fmt::print("ClassLoader running on {}\n", filename);
     std::optional<ClassInfo> cf_opt = parser.parse(filename);
     if (!cf_opt) {

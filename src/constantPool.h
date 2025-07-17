@@ -5,14 +5,20 @@
 #include "fmt/core.h"
 
 enum ConstantType { 
-    UTF8 = 1,
-    INTEGER = 3,
-    FLOAT = 4,
     CLASS = 7,
-    STRING = 8,
     FIELD_REF = 9,
     METHOD_REF = 10,
+    INTERFACE_METHOD_REF = 11,
+    STRING = 8,
+    INTEGER = 3,
+    FLOAT = 4,
+    LONG = 5,
+    DOUBLE = 6,
     NAME_AND_TYPE = 12,
+    UTF8 = 1,
+    METHOD_HANDLE = 15,
+    METHOD_TYPE = 16,
+    INVOKE_DYNAMIC = 18,
 };
 
 // 常量池类型定义
@@ -39,6 +45,14 @@ struct ConstantPoolInfo {
     uint16_t descriptor_index;
     // tag=1: UTF-8字符串常量
     std::string utf8_str;
+    // tag=15: MethodHandle
+    uint8_t reference_kind;
+    uint16_t reference_index;
+    // tag=16: MethodType
+    uint16_t descriptor_index_mt;
+    // tag=18: InvokeDynamic
+    uint16_t bootstrap_method_attr_index;
+    uint16_t name_and_type_index;
 };
 
 class ConstantPool {

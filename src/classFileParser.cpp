@@ -87,18 +87,21 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
                 in.read(&cp_info.utf8_str[0], len);
                 break;
             }
-            // case 15: {
-
-            // }
-            // case 16: {
-
-            // }
-            // case 18: {
-
-            // }
-            // 其他已知类型处理...
+            case 15: { // CONSTANT_MethodHandle
+                cp_info.reference_kind = read_u1(in);
+                cp_info.reference_index = read_u2(in);
+                break;
+            }
+            case 16: { // CONSTANT_MethodType
+                cp_info.descriptor_index_mt = read_u2(in);
+                break;
+            }
+            case 18: { // CONSTANT_InvokeDynamic
+                cp_info.bootstrap_method_attr_index = read_u2(in);
+                cp_info.name_and_type_index = read_u2(in);
+                break;
+            }
             default: {
-                // 处理未知tag
                 throw std::runtime_error("Unsupported constant pool tag: " + std::to_string(tag));
             }
         }
