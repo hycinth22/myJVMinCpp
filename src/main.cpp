@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
         for (const auto& method : cf.methods) {
             if (method.name == "main") {
                 Interpreter interpreter;
-                interpreter.execute(cf.constant_pool, method);
+                interpreter.execute(cf, method);
                 break;
             }
         }

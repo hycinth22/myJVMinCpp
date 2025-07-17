@@ -4,6 +4,8 @@
 #include <string>
 #include <fmt/core.h>
 #include "interpreter.h"
+#include "runtime.h"
+#include <iostream>
 
 uint16_t read_u2_from_code(const std::vector<uint8_t>& code, size_t pc) {
     return (code[pc] << 8) | code[pc + 1];
@@ -101,136 +103,213 @@ void Interpreter::resolve_invokevirtual(const std::vector<ConstantPoolInfo>& con
     }
 }
 
-void Interpreter::execute(const std::vector<ConstantPoolInfo>& constant_pool, const MethodInfo& method) {
-    std::vector<int32_t> operand_stack;
-    std::vector<int32_t> locals(method.max_locals, 0);
-    size_t pc = 0;
-
-    auto printStack = [&]() {
-        fmt::print("Stack: [");
-        for (auto x: operand_stack) {
-            fmt::print("{} ", x);
+// 根据方法名和描述符查找方法
+MethodInfo* Interpreter::find_method(ClassFile& cf, const std::string& name, const std::string& descriptor) {
+    for (auto& m : cf.methods) {
+        if (m.name == name && m.descriptor == descriptor) {
+            return &m;
         }
-        fmt::print("]");
-    };
-    auto printLocals = [&]() {
-        fmt::print("Locals: [");
-        for (auto x: locals) {
-            fmt::print("{} ", x);
-        }
-        fmt::print("]");
-    };
+    }
+    return nullptr;
+}
 
-    fmt::print("  ");
-    printStack();
-    fmt::print(" ");
-    printLocals();
-    fmt::print("\n");
-    while (pc < method.code.size()) {
-        uint8_t opcode = method.code[pc];
-        fmt::print("# Pc:{} Opcode:0x{:0x}\n", pc, opcode);
-        pc++;
-
-        float constant_float_one = 1.0f;
-
+// 执行指定的方法
+std::optional<int32_t> Interpreter::execute(ClassFile& cf, const MethodInfo& method) {
+    JVMThread thread;
+    Frame frame(method.max_locals, method.max_stack);
+    size_t& pc = frame.pc;
+    std::vector<uint8_t> code = method.code;
+    thread.push_frame(frame);
+    while (!thread.empty()) {
+        Frame& cur_frame = thread.current_frame();
+        pc = cur_frame.pc;
+        if (pc >= code.size()) break;
+        uint8_t opcode = code[pc++];
         switch (opcode) {
             case 0x00: // nop
                 break;
-            case 0x03: // iconst_0
-                operand_stack.push_back(0);
-                break;
-            case 0x04: // iconst_1
-                operand_stack.push_back(1);
-                break;
-            case 0x05: // iconst_2
-                operand_stack.push_back(2);
-                break;
-            case 0x06: // iconst_3
-                operand_stack.push_back(3);
-                break;
-            case 0x0d: // fconst_1 (浮点常量1.0)
-                operand_stack.push_back(*reinterpret_cast<int32_t*>(&constant_float_one));
-                break;
-            case 0x12: { // ldc (加载常量池项)
-                uint8_t index = method.code[pc];
-                pc++; // 跳过1字节的索引
-                resolve_ldc(constant_pool, index, operand_stack);
-                break;
-            }
-            case 0x1a: // iload_0
-                operand_stack.push_back(locals[0]);
-                break;
-            case 0x1b: {
-                if (method.max_locals <= 1) {
-                    throw std::runtime_error("Local variable index 1 out of bounds");
+                case 0x03: // iconst_0
+                case 0x04: // iconst_1
+                case 0x05: // iconst_2
+                case 0x06: // iconst_3
+                case 0x07: // iconst_4
+                case 0x08: // iconst_5
+                {
+                    int constval = opcode - 0x03;
+                    cur_frame.operand_stack.push(constval);
+                    break;
                 }
-                operand_stack.push_back(locals[1]);
-                break;
-            }
-
-            case 0x3b: // istore_0
-                locals[0] = operand_stack.back();
-                operand_stack.pop_back();
-                break;
-            case 0x3c: { // istore_1
-                if (operand_stack.empty()) {
-                    throw std::runtime_error("Stack underflow for istore_1");
+                case 0x10: // bipush
+                    cur_frame.operand_stack.push((int8_t)code[pc++]);
+                    break;
+                case 0x1a: // iload_0
+                case 0x1b: // iload_1
+                case 0x1c: // iload_2
+                case 0x1d: // iload_3
+                {
+                    int local_index = opcode - 0x1a;
+                    cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
+                    break;
                 }
-                locals[1] = operand_stack.back();
-                operand_stack.pop_back();
-                break;
-            }
-            case 0x60: { // iadd
-                int32_t a = operand_stack.back(); operand_stack.pop_back();
-                int32_t b = operand_stack.back(); operand_stack.pop_back();
-                operand_stack.push_back(a + b);
-                break;
-            }
-            case 0x84: {
-                uint8_t index = method.code[pc++];
-                int8_t increment = static_cast<int8_t>(method.code[pc++]);
-
-                // 边界检查
-                if (index >= method.max_locals) {
-                    throw std::runtime_error(
-                        fmt::format("Local variable index {} out of bounds (max_locals={})",
-                                    index, method.max_locals)
-                    );
+                case 0x36: // istore
+                {
+                    uint8_t idx = code[pc++];
+                    cur_frame.local_vars[idx] = cur_frame.operand_stack.pop();
+                    break;
                 }
-
-                // 执行自增操作
-                locals[index] += increment;
-
-                // 调试输出（可选）
-                fmt::print("iinc: local[{}] += {} → new value={}\n",
-                            index, increment, locals[index]);
-                break;
-            }
-            case 0xac: // ireturn
-                fmt::print("Method returned int {}\n", operand_stack.back());
-                return;
-            case 0xb1: // return (void方法返回)
-                fmt::print("Method returned void\n");
-                return;
-            case 0xb2: { // getstatic (获取静态字段)
-                uint16_t index = read_u2_from_code(method.code, pc);
-                pc += 2; // 跳过2字节的索引
-                resolve_getstatic(constant_pool, index, operand_stack);
-                break;
-            }
-            case 0xb6: { // invokevirtual (调用实例方法)
-                uint16_t index = read_u2_from_code(method.code, pc);
-                pc += 2; // 跳过2字节的索引
-                resolve_invokevirtual(constant_pool, index, operand_stack);
-                break;
-            }
+                case 0x3b: // istore_0
+                case 0x3c: // istore_1
+                case 0x3d: // istore_2
+                case 0x3e: // istore_3
+                {
+                    int local_index = opcode - 0x3b;
+                    cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
+                    break;
+                }
+                case 0x60: // iadd
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    cur_frame.operand_stack.push(v1 + v2);
+                    break;
+                }
+                case 0x84: // iinc
+                {
+                    uint8_t idx = code[pc++];
+                    int8_t inc = (int8_t)code[pc++];
+                    cur_frame.local_vars[idx] += inc;
+                    break;
+                }
+                case 0x9f: // if_icmpeq
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 == v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa0: // if_icmpne
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 != v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa1: // if_icmplt
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 < v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa2: // if_icmpge
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 >= v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa3: // if_icmpgt
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 > v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa4: // if_icmple
+                {
+                    int32_t v2 = cur_frame.operand_stack.pop();
+                    int32_t v1 = cur_frame.operand_stack.pop();
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    if (v1 <= v2) {
+                        pc = (size_t)((int)pc + offset - 3);
+                    }
+                    break;
+                }
+                case 0xa7: // goto
+                {
+                    int16_t offset = (int16_t)((code[pc] << 8) | code[pc+1]);
+                    pc += 2;
+                    pc = (size_t)((int)pc + offset - 3); // -3: opcode+2字节已读
+                    break;
+                }
+                case 0xac: // ireturn（int方法返回）
+                {
+                    int32_t ret = cur_frame.operand_stack.pop();
+                    std::cout << "方法返回值: " << ret << std::endl;
+                    if (!thread.empty()) {
+                        // 返回值压入调用者帧的操作数栈
+                        thread.current_frame().operand_stack.push(ret);
+                    }
+                    break;
+                }
+                case 0xb1: // return（void方法返回）
+                    thread.pop_frame();
+                    break;
+                case 0xb6: // invokevirtual
+                {
+                    uint16_t idx = (code[pc] << 8) | code[pc+1];
+                    pc += 2;
+                    // 解析常量池，查找方法名和描述符
+                    // 这里只支持本类方法调用
+                    // 真实JVM需支持多类查找
+                        
+                    // 解析方法名和描述符
+                    const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
+                    uint16_t name_type_idx = cp_entry.methodref_name_type_index;
+                    const ConstantPoolInfo& nt = cf.constant_pool[name_type_idx];
+                    std::string mname = nt.utf8_str; // 这里简化，实际需查name_index
+                    std::string mdesc = "()V"; // 假设void方法
+                    MethodInfo* target = find_method(cf, mname, mdesc);
+                    if (target) {
+                        execute(cf, *target);
+                    }
+                    break;
+                }
+                case 0xb8: // invokestatic
+                {
+                    uint16_t idx = (code[pc] << 8) | code[pc+1];
+                    pc += 2;
+                    // 解析常量池，查找方法名和描述符
+                    const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
+                    uint16_t name_type_idx = cp_entry.methodref_name_type_index;
+                    const ConstantPoolInfo& nt = cf.constant_pool[name_type_idx];
+                    std::string mname = nt.utf8_str; // 这里简化，实际需查name_index
+                    std::string mdesc = "()V"; // 假设void方法
+                    MethodInfo* target = find_method(cf, mname, mdesc);
+                    if (target) {
+                        auto ret = execute(cf, *target);
+                        if (ret.has_value()) {
+                            cur_frame.operand_stack.push(ret.value());
+                        }
+                    }
+                    break;
+                }
             default:
-                throw std::runtime_error("Unsupported opcode: " + fmt::format("0x{:0x}", opcode));
+                std::cerr << "暂不支持的字节码: 0x" << std::hex << (int)opcode << std::endl;
+                return {};
         }
-        fmt::print("  ");
-        printStack();
-        fmt::print(" ");
-        printLocals();
-        fmt::print("\n");
+        cur_frame.pc = pc;
     }
+    return {};
 }
