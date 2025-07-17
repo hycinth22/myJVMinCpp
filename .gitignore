@@ -6,6 +6,5 @@ Makefile
 *.cmake
 build/
 
-# testcase
-*.java
+# testcase build
 *.class
