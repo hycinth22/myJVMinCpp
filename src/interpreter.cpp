@@ -104,6 +104,31 @@ void Interpreter::init_opcode_table() {
             fmt::print("Put long {} on the stack\n", constval);
         };
     }
+    // fconst_0
+    opcode_table[0x0b] = [](Frame& frame, ...) {
+        frame.operand_stack.push_float(0.0f);
+        fmt::print("Put float 0.0 on the stack\n");
+    };
+    // fconst_1
+    opcode_table[0x0c] = [](Frame& frame, ...) {
+        frame.operand_stack.push_float(1.0f);
+        fmt::print("Put float 1.0 on the stack\n");
+    };
+    // fconst_2
+    opcode_table[0x0d] = [](Frame& frame, ...) {
+        frame.operand_stack.push_float(2.0f);
+        fmt::print("Put float 2.0 on the stack\n");
+    };
+    // dconst_0
+    opcode_table[0x0e] = [](Frame& frame, ...) {
+        frame.operand_stack.push_double(0.0);
+        fmt::print("Put double 0.0 on the stack\n");
+    };
+    // dconst_1
+    opcode_table[0x0f] = [](Frame& frame, ...) {
+        frame.operand_stack.push_double(1.0);
+        fmt::print("Put double 1.0 on the stack\n");
+    };
     // bipush
     opcode_table[0x10] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
         ByteT val = (ByteT)code[pc++];
