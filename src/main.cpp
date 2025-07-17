@@ -23,7 +23,9 @@ int main(int argc, char* argv[]) {
         for (const auto& method : cf.methods) {
             if (method.name == "main") {
                 Interpreter interpreter;
-                interpreter.execute(cf, method);
+                std::vector<int32_t> args(1);
+                interpreter.execute(cf, method, args);
+                fmt::print("Main done\n");
                 break;
             }
         }

@@ -21,7 +21,7 @@ uint32_t read_u4(std::ifstream& in) {
 }
 
 ClassFile ClassFileParser::parse(const std::string& filename) {
-          std::ifstream in(filename, std::ios::binary);
+        std::ifstream in(filename, std::ios::binary);
         ClassFile class_file;
 
         // 读取魔数
@@ -100,13 +100,14 @@ ClassFile ClassFileParser::parse(const std::string& filename) {
                     throw std::runtime_error("Unsupported constant pool tag: " + std::to_string(tag));
                 }
             }
-            class_file.constant_pool.push_back(cp_info);
+            class_file.constant_pool.add_constant(std::move(cp_info));
         }
+        class_file.constant_pool.print_all();
 
         // 解析访问标志、类名、父类名等
         uint16_t access_flags= read_u2(in);
-        uint16_t this_class= read_u2(in);
-        uint16_t super_class= read_u2(in);
+        class_file.this_class = read_u2(in);
+        class_file.super_class = read_u2(in);
 
         // 解析接口
         uint16_t interfaces_count = read_u2(in);
@@ -135,8 +136,8 @@ ClassFile ClassFileParser::parse(const std::string& filename) {
             method.access_flags = access_flags;
             uint16_t name_idx = read_u2(in);
             uint16_t desc_idx = read_u2(in);
-            method.name = get_utf8_str(class_file.constant_pool, name_idx);
-            method.descriptor = get_utf8_str(class_file.constant_pool, desc_idx);
+            method.name = class_file.constant_pool.get_utf8_str(name_idx);
+            method.descriptor = class_file.constant_pool.get_utf8_str(desc_idx);
 
             // fmt::print("parsing method {}\n", method.name);
 
@@ -160,11 +161,11 @@ ClassFile ClassFileParser::parse(const std::string& filename) {
         return class_file;
 }
 
-AttributeInfo ClassFileParser::parseAttributeInfo(std::ifstream& in, const std::vector<ConstantPoolInfo>& cp) {
+AttributeInfo ClassFileParser::parseAttributeInfo(std::ifstream& in, const ConstantPool& cp) {
     AttributeInfo attr;
     uint16_t attr_name_idx = read_u2(in);
     uint32_t attr_len = read_u4(in);
-    attr.name = get_utf8_str(cp, attr_name_idx);
+    attr.name = cp.get_utf8_str(attr_name_idx);
     if (attr.name == "Code") {
         std::unique_ptr<CodeAttribute> code_attr = std::make_unique<CodeAttribute>();
         code_attr->max_stack = read_u2(in);
@@ -192,9 +193,4 @@ AttributeInfo ClassFileParser::parseAttributeInfo(std::ifstream& in, const std::
         attr = AttributeInfo(attr.name, unkown_info);
     }
     return attr;
-}
-
-std::string ClassFileParser::get_utf8_str(const std::vector<ConstantPoolInfo>& cp, uint16_t index) const {
-    if (index == 0 || index > cp.size()) return "";
-    return cp[index - 1].utf8_str;
 }

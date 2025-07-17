@@ -7,8 +7,7 @@ class ClassFileParser {
 public:
     ClassFile parse(const std::string& filename);
 private:
-    AttributeInfo parseAttributeInfo(std::ifstream& in, const std::vector<ConstantPoolInfo>& cp);
-    std::string get_utf8_str(const std::vector<ConstantPoolInfo>& cp, uint16_t index) const;
+    AttributeInfo parseAttributeInfo(std::ifstream& in, const ConstantPool& cp);
 };
 
 #endif //CLASSFILEPARSER_H

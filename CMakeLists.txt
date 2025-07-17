@@ -14,6 +14,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 add_executable(myJVMinCpp
     src/main.cpp
     src/classFileParser.cpp
+    src/constantPool.cpp
     src/interpreter.cpp
 )
 

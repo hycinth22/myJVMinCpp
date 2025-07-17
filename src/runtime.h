@@ -7,6 +7,16 @@
 #include <stack>
 #include <map>
 
+// 方法信息结构
+struct MethodInfo {
+    uint16_t access_flags;
+    std::string name;
+    std::string descriptor;
+    std::vector<uint8_t> code;
+    uint16_t max_stack;
+    uint16_t max_locals;
+};
+
 // 局部变量表（本地变量区）
 class LocalVars {
 public:
@@ -29,7 +39,9 @@ struct Frame {
     LocalVars local_vars;
     OperandStack operand_stack;
     size_t pc; // 程序计数器
-    Frame(size_t max_locals, size_t max_stack) : local_vars(max_locals), operand_stack(), pc(0) {}
+    std::string classname;
+    const MethodInfo& method;
+    Frame(size_t max_locals, size_t max_stack, const std::string &classname, const MethodInfo& method) : local_vars(max_locals), operand_stack(), pc(0), method(method), classname(classname)  {}
 };
 
 // JVM对象模型
@@ -41,9 +53,15 @@ struct JVMObject {
 class JVMThread {
 public:
     std::stack<Frame> call_stack;
-    void push_frame(const Frame& frame) { call_stack.push(frame); }
+    void push_frame(const Frame& frame) { 
+        // printf("push frame of %s\n", frame.method.name.c_str());
+        call_stack.push(frame);
+    }
     void pop_frame() { call_stack.pop(); }
-    Frame& current_frame() { return call_stack.top(); }
+    Frame& current_frame() { 
+        // printf("top frame is %s\n", call_stack.top().method.name.c_str());
+        return call_stack.top();
+     }
     bool empty() const { return call_stack.empty(); }
 };
 
