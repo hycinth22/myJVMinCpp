@@ -58,6 +58,12 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
                 cp_info.methodref_name_type_index = read_u2(in);
                 break;
             }
+            case 11: { // CONSTANT_InterfaceMethodref
+                // CONSTANT_InterfaceMethodref 结构与 CONSTANT_Methodref 相同
+                cp_info.methodref_class_index = read_u2(in);
+                cp_info.methodref_name_type_index = read_u2(in);
+                break;
+            }
             case 8: { // CONSTANT_String
                 cp_info.string_index = read_u2(in);
                 break;
