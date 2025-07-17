@@ -32,6 +32,14 @@ int main(int argc, char* argv[]) {
         if (!input_dir.empty()) {
             interpreter.class_loader.add_search_dir(input_dir);
         }
+        // 读取JDK_PATH环境变量
+        const char* jdk_env = std::getenv("JDK_CLASSES");
+        std::string jdk_path = jdk_env;
+        for (const auto& p : std::filesystem::directory_iterator(jdk_path, std::filesystem::directory_options::follow_directory_symlink)) {
+            if (!p.is_directory()) continue;
+            interpreter.class_loader.add_search_dir(p.path().string());
+        }
+        interpreter.class_loader.print_search_dirs();
         fmt::print("Interpreter running\n");
         std::vector<SlotT> args(1);
         interpreter.execute(class_name, "main", "([Ljava/lang/String;)V", args);

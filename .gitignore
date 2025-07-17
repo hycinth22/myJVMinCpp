@@ -8,3 +8,6 @@ build/
 
 # testcase build
 *.class
+
+# standard library
+jdk_classes/

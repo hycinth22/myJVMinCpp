@@ -1,9 +1,11 @@
 #include "ClassLoader.h"
 #include <stdexcept>
 #include <fstream>
+#include <filesystem>
 
 ClassLoader::ClassLoader(const std::vector<std::string>& dirs)
-    : search_dirs(dirs) {}
+    : search_dirs(dirs) {
+    }
 
 void ClassLoader::set_search_dirs(const std::vector<std::string>& dirs) {
     search_dirs = dirs;
@@ -13,27 +15,35 @@ void ClassLoader::add_search_dir(const std::string& dir) {
     search_dirs.push_back(dir);
 }
 
+void ClassLoader::print_search_dirs() {
+    fmt::print("ClassLoader search_dirs: ");
+    for (auto& dir: search_dirs) {
+        fmt::print("{};", dir);
+    }
+    fmt::print("\n");
+}
+
+// class_name 形如 java/io/PrintStream
 std::string ClassLoader::find_class_file(const std::string& class_name) {
-    std::string filename = class_name + ".class";
+    std::string relpath = class_name + ".class";
     for (const auto& dir : search_dirs) {
-        std::string fullpath = dir.empty() ? filename : (dir + "/" + filename);
+        std::string fullpath = dir.empty() ? relpath : (dir + "/" + relpath);
         std::ifstream in(fullpath, std::ios::binary);
-        if (in.is_open()) {
-            return fullpath;
-        }
+        if (in.is_open()) return fullpath;
     }
     // 兼容：如果没设置目录，尝试当前目录
-    std::ifstream in(filename, std::ios::binary);
-    if (in.is_open()) return filename;
-    throw std::runtime_error("Class file not found in search dirs: " + filename);
+    std::ifstream in(relpath, std::ios::binary);
+    if (in.is_open()) return relpath;
+    throw std::runtime_error("Class file not found in search dirs: " + relpath);
 }
 
 ClassInfo& ClassLoader::load_class(const std::string& class_name) {
     auto it = class_table.find(class_name);
     if (it != class_table.end()) return it->second;
 
+    fmt::print("ClassLoader searching for {}\n", class_name);
     std::string filename = find_class_file(class_name);
-    fmt::print("ClassLoader running on {}\n", filename);
+    fmt::print("ClassFileParser running on {}\n", filename);
     std::optional<ClassInfo> cf_opt = parser.parse(filename);
     if (!cf_opt) {
         throw std::runtime_error("Invalid class file");

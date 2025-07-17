@@ -12,6 +12,7 @@ public:
     void set_search_dirs(const std::vector<std::string>& dirs);
     // 添加单个目录
     void add_search_dir(const std::string& dir);
+    void print_search_dirs();
     // 加载并返回指定类，已加载则直接返回
     ClassInfo& load_class(const std::string& class_name);
 private:
