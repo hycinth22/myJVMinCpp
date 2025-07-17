@@ -17,6 +17,7 @@ add_executable(myJVMinCpp
     src/ClassLoader.cpp
     src/constantPool.cpp
     src/interpreter.cpp
+    src/NativeMethods.cpp
 )
 
 if(TARGET fmt::fmt)

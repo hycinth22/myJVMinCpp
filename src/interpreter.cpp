@@ -3,11 +3,12 @@
 #include <cstdint>
 #include <string>
 #include <fmt/core.h>
-#include "interpreter.h"
-#include "runtime.h"
 #include <functional>
 #include <limits>
 #include <cmath>
+#include "interpreter.h"
+#include "runtime.h"
+#include "NativeMethods.h"
 
 JVMThread thread;
 
@@ -1284,11 +1285,14 @@ void Interpreter::init_opcode_table() {
         // TODO: 实现接口方法调用
     };
     // new
-    opcode_table[0xbb] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter& interp) {
-        pc += 2; // 跳过常量池索引
-        int obj_ref = interp.new_object();
+    opcode_table[0xbb] = [](Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (static_cast<uint16_t>(code[pc]) << 8) | code[pc+1]; // 常量池索引（2字节，大端序）
+        pc += 2;
+        const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
+        std::string class_name = cf.constant_pool.get_class_name(cp_entry.class_name_index);
+        int obj_ref = interp.new_object(class_name);
         cur_frame.operand_stack.push(obj_ref);
-        fmt::print("alloc new object {}\n", obj_ref);
+        fmt::print("alloc new object {} for class {}\n", obj_ref, class_name);
     };
     // invokedynamic
     opcode_table[0xba] = [](Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
@@ -1400,24 +1404,48 @@ std::optional<SlotT> Interpreter::_execute(ClassInfo& entry_class, const MethodI
         Frame& cur_frame = thread.current_frame();
         auto &pc = cur_frame.pc;
         auto &code = cur_frame.method_info.code;
-        auto &cf = cur_frame.class_info;
-        auto &classname = cf.constant_pool.get_class_name(cf.this_class);
-        if (pc >= code.size()) {
-            fmt::print("pc reach code end but no return");
-            exit(1);
+        auto &classinfo = cur_frame.class_info;
+        auto &methodinfo = cur_frame.method_info;
+        auto &cp = classinfo.constant_pool;
+        auto &class_name = classinfo.constant_pool.get_class_name(classinfo.this_class);
+        auto &method_name = methodinfo.name;
+        auto &method_desc = methodinfo.descriptor;
+        fmt::print("[execute] className:{} method: {} ", class_name, method_name);
+
+
+        // 检查native方法
+        if ((cur_frame.method_info.access_flags & ACC_NATIVE) != 0) {
+            // native method
+            auto func = find_native(class_name, method_name, method_desc);
+            if (func) {
+                func(cur_frame, *this);
+                thread.pop_frame();
+                if (!thread.empty()) {
+                    // thread.current_frame().operand_stack.push(ret);
+                }
+            } else {
+                fmt::print("Native method {}.{}{} not implemented\n", class_name, method_name, method_desc);
+                exit(1);
+            }
+        } else {
+            // normal method
+            if (pc >= code.size()) {
+                fmt::print("pc reach code end but no return");
+                exit(1);
+            }
+            uint8_t opcode = code[pc++];
+            fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
+            opcode_table[opcode](cur_frame, pc, code, classinfo, *this);
+            cur_frame.pc = pc;
         }
-        uint8_t opcode = code[pc++];
-        fmt::print("[execute] className:{} method: {}", classname, cur_frame.method_info.name);
-        fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
-        opcode_table[opcode](cur_frame, pc, code, cf, *this);
-        cur_frame.pc = pc;
     }
     return {};
 }
 
 // 分配新对象，返回对象引用（索引）
-int Interpreter::new_object() {
+int Interpreter::new_object(const std::string& class_name) {
     JVMObject obj;
+    obj.class_name = class_name;
     object_pool.push_back(obj);
     return object_pool.size() - 1; // 返回对象在池中的索引
 }

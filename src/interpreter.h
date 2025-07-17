@@ -15,21 +15,24 @@
 class Interpreter {
 public:
     ClassLoader class_loader; 
-    Interpreter() {
-        new_object();
-        new_object();
-    }
+    Interpreter() {}
     // 执行指定方法
     std::optional<SlotT> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<SlotT>& args);
     // 根据方法名和描述符查找方法
     MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor);
     // 分配新对象，返回对象引用（索引）
-    int new_object();
+    int new_object(const std::string &class_name);
+    JVMObject& get_object(int ref) {
+        // 检查索引合法性
+        if (ref < 0 || ref >= object_pool.size()) {
+            throw std::out_of_range("Invalid object reference");
+        }
+        return object_pool[ref];
+    }
     // 设置对象字段
     void put_field(int obj_ref, const std::string& field, SlotT value);
     // 获取对象字段
     SlotT get_field(int obj_ref, const std::string& field);
-
 private:
     // 对象池，包含堆对象和static对象
     std::vector<JVMObject> object_pool;

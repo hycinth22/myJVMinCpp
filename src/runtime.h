@@ -1,5 +1,6 @@
 #ifndef RUNTIME_H
 #define RUNTIME_H
+#include "constantPool.h"
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -19,6 +20,9 @@ using RefT = int32_t;
 using SlotT = uint32_t;
 using TwoSlotT = uint64_t;
 const size_t SLOT_WIDTH = 32;
+
+const uint16_t ACC_NATIVE = 0x0100;
+const uint16_t ACC_ABSTRACT = 0x0400;
 
 // 方法信息结构
 struct MethodInfo {
@@ -163,6 +167,7 @@ struct Frame {
 
 // JVM对象模型
 struct JVMObject {
+    std::string class_name;
     std::map<std::string, int32_t> fields; // 字段名到值的映射
 };
 

@@ -1,3 +1,4 @@
+#pragma once
 // 常量池封装
 #include <stddef.h>
 #include <string>

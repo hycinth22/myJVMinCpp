@@ -35,12 +35,13 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
     // 解析版本号
     class_file.minorVer = read_u2(in); // minor
     class_file.majorVer = read_u2(in); // major
+    fmt::print("ClassFile Ver {}.{} \n", class_file.majorVer, class_file.minorVer);
 
     // 解析常量池
     uint16_t cp_count = read_u2(in);
     for (int i = 1; i < cp_count; ++i) { // 常量池索引从1开始
         uint8_t tag = read_u1(in);
-        fmt::print("parsing tag type: {}\n", tag);
+        // fmt::print("parsing tag type: {}\n", tag);
         ConstantPoolInfo cp_info;
         cp_info.tag = tag;
         switch (tag) {
@@ -167,7 +168,8 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
                 code_found = true;
             }
         }
-        if (!code_found) {
+        if (!code_found && (access_flags & ACC_NATIVE) == 0 && (access_flags & ACC_ABSTRACT) == 0) {
+            fmt::print("Found a method {} without Code attribute\n", method.name);
             throw std::runtime_error("Found a method without Code attribute");
         }
         class_file.methods.push_back(method);

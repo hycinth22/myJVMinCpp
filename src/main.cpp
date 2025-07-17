@@ -3,6 +3,7 @@
 #include <fmt/core.h> 
 #include "classFileParser.h"
 #include "interpreter.h"
+#include "NativeMethods.h"
 #include <filesystem>
 
 int main(int argc, char* argv[]) {
@@ -24,6 +25,7 @@ int main(int argc, char* argv[]) {
     fmt::print("class_name: {}\n", class_name);
 
     try {
+        register_builtin_natives();
         // 获取 input_file 所在目录
         std::filesystem::path input_path(input_file);
         std::string input_dir = input_path.has_parent_path() ? input_path.parent_path().string() : "";

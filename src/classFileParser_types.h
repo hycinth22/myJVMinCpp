@@ -16,40 +16,19 @@ struct ExceptionTable {
 
 struct CodeAttribute;
 struct AttributeInfo {
-    AttributeInfo() : ty(TYPE::EMPTY) {}
-    AttributeInfo(AttributeInfo&& rhs) {
-        ty = rhs.ty;
-        if (ty==TYPE::CODE) {
-            code = std::move(rhs.code);
-        } else if (ty==TYPE::UNKOWN) {
-            unkown_info = std::move(rhs.unkown_info);
-        }
-    }
-    // ~AttributeInfo() {
-    //     if (ty==TYPE::CODE) {
-    //         code.~unique_ptr();
-    //     } else if (ty==TYPE::UNKOWN) {
-    //         unkown_info.~vector<uint8_t>();
-    //     }
-    // }
-    AttributeInfo& operator=(AttributeInfo&& rhs) {
-        this->~AttributeInfo();
-        ty = rhs.ty;
-        if (ty==TYPE::CODE) {
-            code = std::move(rhs.code);
-        } else if (ty==TYPE::UNKOWN) {
-            unkown_info = std::move(rhs.unkown_info);
-        }
-        return *this;
-    }
-    AttributeInfo(std::string name, std::unique_ptr<CodeAttribute> code) : ty(TYPE::CODE), name(name), code(move(code)) {}
-    AttributeInfo(std::string name, std::vector<uint8_t> unkown_info)  : ty(TYPE::UNKOWN), name(name), unkown_info(unkown_info) {}
+    AttributeInfo() = default;
+    AttributeInfo(AttributeInfo&&) = default;
+    AttributeInfo& operator=(AttributeInfo&&) = default;
+    AttributeInfo(const AttributeInfo&) = default;
+    AttributeInfo& operator=(const AttributeInfo&) = default;
+    AttributeInfo(std::string name, std::unique_ptr<CodeAttribute> code)
+        : name(std::move(name)), code(std::move(code)) {}
+    AttributeInfo(std::string name, std::vector<uint8_t> unkown_info)
+        : name(std::move(name)), unkown_info(std::move(unkown_info)) {}
+
     std::string name;
     std::unique_ptr<CodeAttribute> code;
     std::vector<uint8_t> unkown_info;
-private:
-    enum class TYPE {EMPTY, CODE, UNKOWN};
-    TYPE ty;
 };
 
 struct CodeAttribute {
