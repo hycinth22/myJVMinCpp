@@ -117,7 +117,9 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
         }
         class_file.constant_pool.add_constant(std::move(cp_info));
     }
-    class_file.constant_pool.print_all();
+    if(std::getenv("JVM_PRINT_CONSTANT")) {
+        class_file.constant_pool.print_all();
+    }
 
     // 解析访问标志、类名、父类名等
     uint16_t access_flags= read_u2(in);
