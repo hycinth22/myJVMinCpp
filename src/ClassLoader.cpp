@@ -37,7 +37,7 @@ std::string ClassLoader::find_class_file(const std::string& class_name) {
     throw std::runtime_error("Class file not found in search dirs: " + relpath);
 }
 
-ClassInfo& ClassLoader::load_class(const std::string& class_name) {
+ClassInfo& ClassLoader::load_class(const std::string& class_name, LoadClassCallback loaded_callback) {
     auto it = class_table.find(class_name);
     if (it != class_table.end()) return it->second;
 
@@ -60,10 +60,11 @@ ClassInfo& ClassLoader::load_class(const std::string& class_name) {
     if (cf.super_class != 0) {
         std::string super_name = cf.constant_pool.get_class_name(cf.super_class);
         if (super_name != "java/lang/Object") {
-            load_class(super_name);
+            load_class(super_name, loaded_callback);
         }
     }
 
     auto [inserted, _] = class_table.emplace(class_name, std::move(cf));
+    loaded_callback(class_name);
     return inserted->second;
 } 

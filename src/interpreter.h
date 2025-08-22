@@ -58,7 +58,12 @@ private:
     std::optional<SlotT> _execute(JVMContext& context, ClassInfo& cf, const MethodInfo& method, const std::vector<SlotT>& args);
 
     ClassInfo& load_class(const std::string& class_name) {
-        return class_loader.load_class(class_name);
+        return class_loader.load_class(class_name, [this](const std::string& loaded_class_name){
+            // 执行已加载类的<clinit>方法初始化类的类变量和静态块。
+            // 注意，class_loader除了加载class_name还会加载基类，因此loaded_class_name!=class_name
+            std::vector<SlotT> args;
+            this->execute(loaded_class_name, "<clinit>", "()V", args);
+        });
     }
 };
 

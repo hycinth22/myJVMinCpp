@@ -2,9 +2,11 @@
 #define CLASSLOADER_H
 #include <map>
 #include <string>
+#include <functional>
 #include "classFileParser.h"
 #include "classFileParser_types.h"
 
+using LoadClassCallback = std::function<void(const std::string& loaded_class_name)>;
 class ClassLoader {
 public:
     ClassLoader(const std::vector<std::string>& dirs = {});
@@ -14,7 +16,7 @@ public:
     void add_search_dir(const std::string& dir);
     void print_search_dirs();
     // 加载并返回指定类，已加载则直接返回
-    ClassInfo& load_class(const std::string& class_name);
+    ClassInfo& load_class(const std::string& class_name, LoadClassCallback loaded_callback);
 private:
     std::map<std::string, ClassInfo> class_table;
     ClassFileParser parser;
