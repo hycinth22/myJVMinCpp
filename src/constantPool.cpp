@@ -5,7 +5,7 @@ void ConstantPool::print_all() const {
     printf("constant pool:\n");
     for (size_t i = 0; i < pool.size(); ++i) {
         const auto& cp = pool[i];
-        printf("#%zu: tag=%d ", i+1, cp.tag);
+        printf("#%zu: tag=%d ", i, cp.tag);
         switch (cp.tag) {
             case ConstantType::UTF8:
                 printf("Utf8: %s\n", cp.utf8_str.c_str());
