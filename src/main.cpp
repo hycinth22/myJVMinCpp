@@ -36,10 +36,11 @@ int main(int argc, char* argv[]) {
         }
         // 读取JDK_PATH环境变量
         const char* jdk_env = std::getenv("JDK_CLASSES");
-        std::string jdk_path = jdk_env;
-        for (const auto& p : std::filesystem::directory_iterator(jdk_path, std::filesystem::directory_options::follow_directory_symlink)) {
-            if (!p.is_directory()) continue;
-            interpreter.class_loader.add_search_dir(p.path().string());
+        if (jdk_env) {
+            for (const auto& p : std::filesystem::directory_iterator(jdk_env, std::filesystem::directory_options::follow_directory_symlink)) {
+                if (!p.is_directory()) continue;
+                interpreter.class_loader.add_search_dir(p.path().string());
+            }
         }
         interpreter.class_loader.print_search_dirs();
         fmt::print("Interpreter running\n");
