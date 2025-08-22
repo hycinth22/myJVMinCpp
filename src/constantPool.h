@@ -98,7 +98,7 @@ class ConstantPool {
             return get_utf8_str(pool[index].class_name_index);
         }
 
-        ConstIdxT get_string_idx(ConstIdxT index) const {
+        const std::string& get_string_idx(ConstIdxT index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_string_idx: index {} out of bound", index);
                 exit(1);
@@ -107,7 +107,7 @@ class ConstantPool {
                 fmt::print("ConstantPool.get_string_idx: index {} is not string entry", index);
                 exit(1);
             }
-            return pool[index].string_index;
+            return get_utf8_str(pool[index].string_index);
         }
 
 

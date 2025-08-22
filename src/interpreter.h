@@ -15,7 +15,8 @@
 class Interpreter {
 public:
     ClassLoader class_loader; 
-    Interpreter() {}
+    Interpreter() : object_pool(42)
+     {}
     // 执行指定方法
     std::optional<SlotT> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<SlotT>& args);
     // 根据方法名和描述符查找方法

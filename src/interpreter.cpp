@@ -145,17 +145,24 @@ void Interpreter::init_opcode_table() {
         fmt::print("sipush: Put short {} on the stack\n", val);
     };
     // ldc
-    opcode_table[0x12] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter&) {
+    opcode_table[0x12] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
         size_t idx = code[pc++];
         const ConstantPoolInfo& cpe = cf.constant_pool[idx];
         if (cpe.tag == ConstantType::INTEGER || cpe.tag == ConstantType::FLOAT) {
             int32_t val = cpe.integerOrFloat;
             cur_frame.operand_stack.push(val);
-        // } if (cpe.tag == ConstantType::STRING) {
-        //     std::string str = cf.constant_pool.get_utf8_str(cpe.string_index);
-        //     fmt::print("[ldc] {}\n", str);
-        //     RefT objref = 0;
-        //     cur_frame.operand_stack.push(objref);
+            fmt::print("[ldc] integerOrFloat {}\n", val);
+        } else if (cpe.tag == ConstantType::CLASS) {
+            std::string class_name = cf.constant_pool.get_class_name(idx);
+            RefT objref = interp.new_object(class_name);
+            cur_frame.operand_stack.push(objref);
+            fmt::print("[ldc] class {}\n", class_name);
+        } else if (cpe.tag == ConstantType::STRING) {
+            std::string str = cf.constant_pool.get_string_idx(idx);
+            RefT objref = interp.new_object("java/lang/String");
+            // interp.put_field(objref, "value", str);
+            cur_frame.operand_stack.push(objref);
+            fmt::print("[ldc] string {}\n", str);
         } else {
             fmt::print("[ldc] 暂不支持的常量类型 tag={}\n", (int)cpe.tag);
             exit(1);
@@ -1428,18 +1435,17 @@ std::optional<SlotT> Interpreter::_execute(JVMContext& context, ClassInfo& entry
         auto &class_name = classinfo.constant_pool.get_class_name(classinfo.this_class);
         auto &method_name = methodinfo.name;
         auto &method_desc = methodinfo.descriptor;
-        fmt::print("[execute] className:{} method: {} ", class_name, method_name);
-
+        fmt::print("[execute className:{} method: {}] ", class_name, method_name);
 
         // 检查native方法
         if ((cur_frame.method_info.access_flags & ACC_NATIVE) != 0) {
             // native method
             auto func = find_native(class_name, method_name, method_desc);
             if (func) {
-                func(cur_frame, *this);
+                std::optional<SlotT> ret = func(cur_frame, *this);
                 context.pop_frame();
-                if (!context.empty()) {
-                    // context.current_frame().operand_stack.push(ret);
+                if (ret) {
+                    context.current_frame().operand_stack.push(ret.value());
                 }
             } else {
                 fmt::print("Native method {}.{}{} not implemented\n", class_name, method_name, method_desc);
@@ -1452,7 +1458,7 @@ std::optional<SlotT> Interpreter::_execute(JVMContext& context, ClassInfo& entry
                 exit(1);
             }
             OpCodeT opcode = code[pc++];
-            fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
+            fmt::print("pc 0x{:x} op 0x{:x} \n", pc, opcode);
             opcode_table[opcode](context, cur_frame, pc, code, classinfo, *this);
             cur_frame.pc = pc;
         }
