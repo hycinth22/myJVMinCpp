@@ -34,6 +34,17 @@ public:
     void put_field(RefT obj_ref, const std::string& field, SlotT value);
     // 获取对象字段
     SlotT get_field(RefT obj_ref, const std::string& field);
+    // 浅克隆
+    RefT shallow_clone_object(RefT objref) {
+        const JVMObject& obj = get_object(objref);
+        RefT new_obj_ref = new_object(obj.class_name);
+        JVMObject& new_obj = get_object(new_obj_ref);
+        new_obj.fields.reserve(obj.fields.size());
+        for (const auto& [key, value]: obj.fields) {
+            new_obj.fields[key] = value;
+        }
+        return new_obj_ref;
+    }
 private:
     // 对象池，包含堆对象和static对象
     std::vector<JVMObject> object_pool;

@@ -42,9 +42,10 @@ void Object_getClass(Frame& frame, Interpreter& interp) {
 }
 
 // clone: 返回自身克隆
-void Object_clone(Frame& frame, Interpreter&) {
+void Object_clone(Frame& frame, Interpreter& interp) {
     RefT objref = frame.local_vars.get_ref(0);
-    frame.operand_stack.push(objref); // TODO: 实现深/浅拷贝
+    RefT new_obj_ref = interp.shallow_clone_object(objref); 
+    frame.operand_stack.push(objref);
 }
 
 // // notify/notifyAll/wait: 先做空实现
