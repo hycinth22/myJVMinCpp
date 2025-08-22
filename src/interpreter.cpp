@@ -59,6 +59,15 @@ int count_method_args(const std::string& desc) {
     return count;
 }
 
+// 分配引用类型数组
+RefT Interpreter::new_reference_array(const std::string& element_class_name, size_t len) {
+    std::string elem = element_class_name;
+    JVMArray arr(elem, len, 1);
+    RefT ref = (RefT)array_pool.size() + 1; // 简单生成引用（避免与对象池冲突）
+    array_pool.emplace(ref, std::move(arr));
+    return ref;
+}
+
 // 执行指定的方法
 std::optional<SlotT> Interpreter::execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<SlotT>& args) {
     ClassInfo& cf = load_class(class_name);
@@ -271,64 +280,77 @@ void Interpreter::init_opcode_table() {
         };
     }
     // iaload: Load int from array
-    opcode_table[0x2e] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-
-        fmt::print("iaload: arrayref={}, index={}\n", arrayref, index);
-        // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
-        cur_frame.operand_stack.push(0);
+    opcode_table[0x2e] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        cur_frame.operand_stack.push_int((IntT)arr.get_slot(index));
+        fmt::print("iaload: arrayref={}, index={}, val={}\n", arrayref, index, (IntT)arr.get_slot(index));
     };
     // laload: Load long from array
-    opcode_table[0x2f] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("laload: arrayref={}, index={}\n", arrayref, index);
-        // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
-        cur_frame.operand_stack.push(0);
+    opcode_table[0x2f] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        LongT v = (LongT)arr.get_twoslot(index);
+        cur_frame.operand_stack.push_long(v);
+        fmt::print("laload: arrayref={}, index={}, val={}\n", arrayref, index, v);
     };
     // faload
-    opcode_table[0x30] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("faload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
+    opcode_table[0x30] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        union { FloatT f; UIntT u; } u; u.u = arr.get_slot(index);
+        cur_frame.operand_stack.push_float(u.f);
+        fmt::print("faload: arrayref={}, index={}, val={}\n", arrayref, index, u.f);
     };
     // daload
-    opcode_table[0x31] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("daload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
+    opcode_table[0x31] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        TwoSlotT bits = arr.get_twoslot(index);
+        union { DoubleT d; TwoSlotT l; } u; u.l = bits;
+        cur_frame.operand_stack.push_double(u.d);
+        fmt::print("daload: arrayref={}, index={}, val={}\n", arrayref, index, u.d);
     };
     // aaload
-    opcode_table[0x32] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("aaload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
+    opcode_table[0x32] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        RefT ref = (RefT)arr.get_slot(index);
+        cur_frame.operand_stack.push_ref(ref);
+        fmt::print("aaload: arrayref={}, index={}, val={}\n", arrayref, index, ref);
     };
     // baload
-    opcode_table[0x33] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("baload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
+    opcode_table[0x33] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        ByteT v = (ByteT)arr.get_slot(index);
+        cur_frame.operand_stack.push_int(v);
+        fmt::print("baload: arrayref={}, index={}, val={}\n", arrayref, index, (int)v);
     };
     // caload
-    opcode_table[0x34] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("caload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
+    opcode_table[0x34] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        CharT v = (CharT)arr.get_slot(index);
+        cur_frame.operand_stack.push_int(v);
+        fmt::print("caload: arrayref={}, index={}, val={}\n", arrayref, index, (int)v);
     };
     // saload
-    opcode_table[0x35] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("saload: arrayref={}, index={}\n", arrayref, index);
-        cur_frame.operand_stack.push(0); // TODO: 这里应查找 arrayref 指向的数组对象，并取出 index 位置的元素
-    };    
+    opcode_table[0x35] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        ShortT v = (ShortT)arr.get_slot(index);
+        cur_frame.operand_stack.push_int(v);
+        fmt::print("saload: arrayref={}, index={}, val={}\n", arrayref, index, (int)v);
+    };
     // istore
     opcode_table[0x36] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter&) {
         size_t idx = code[pc++];
@@ -404,67 +426,78 @@ void Interpreter::init_opcode_table() {
         };
     }
     // iastore
-    opcode_table[0x4f] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        IntT value = cur_frame.operand_stack.pop();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("iastore: arrayref={}, index={}, value={}\n", arrayref, index, value); // TODO: 实际应将 value 存入 arrayref 指向的数组的 index 位置
+    opcode_table[0x4f] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        IntT value = cur_frame.operand_stack.pop_int();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, (SlotT)value);
+        fmt::print("iastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
     };
     // lastore
-    opcode_table[0x50] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+    opcode_table[0x50] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
         LongT value = cur_frame.operand_stack.pop_long();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_twoslot(index, (TwoSlotT)value);
         fmt::print("lastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 long 数组的 index 位置
     };
     // fastore
-    opcode_table[0x51] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+    opcode_table[0x51] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
         FloatT value = cur_frame.operand_stack.pop_float();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        union { FloatT f; UIntT u; } u; u.f = value;
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, u.u);
         fmt::print("fastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 float 数组的 index 位置
     };
     // dastore
-    opcode_table[0x52] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
+    opcode_table[0x52] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
         DoubleT value = cur_frame.operand_stack.pop_double();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        union { DoubleT d; TwoSlotT l; } u; u.d = value;
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_twoslot(index, u.l);
         fmt::print("dastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 double 数组的 index 位置
     };
     // aastore
-    opcode_table[0x53] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        RefT value = cur_frame.operand_stack.pop();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
+    opcode_table[0x53] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        RefT value = cur_frame.operand_stack.pop_ref();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, (SlotT)value);
         fmt::print("aastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的引用类型数组的 index 位置
     };
     // bastore
-    opcode_table[0x54] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        ByteT value = cur_frame.operand_stack.pop();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("bastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 byte/boolean 数组的 index 位置
+    opcode_table[0x54] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        ByteT value = (ByteT)cur_frame.operand_stack.pop_int();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, (SlotT)value);
+        fmt::print("bastore: arrayref={}, index={}, value={}\n", arrayref, index, (int)value);
     };
     // castore
-    opcode_table[0x55] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        CharT value = cur_frame.operand_stack.pop();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("castore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 char 数组的 index 位置
+    opcode_table[0x55] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        CharT value = (CharT)cur_frame.operand_stack.pop_int();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, (SlotT)value);
+        fmt::print("castore: arrayref={}, index={}, value={}\n", arrayref, index, (int)value);
     };
     // sastore
-    opcode_table[0x56] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        ShortT value = cur_frame.operand_stack.pop();
-        IntT index = cur_frame.operand_stack.pop();
-        RefT arrayref = cur_frame.operand_stack.pop();
-        fmt::print("sastore: arrayref={}, index={}, value={}\n", arrayref, index, value);
-        // TODO: 将 value 存入 arrayref 指向的 short 数组的 index 位置
+    opcode_table[0x56] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        ShortT value = (ShortT)cur_frame.operand_stack.pop_int();
+        IntT index = cur_frame.operand_stack.pop_int();
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        arr.put_slot(index, (SlotT)value);
+        fmt::print("sastore: arrayref={}, index={}, value={}\n", arrayref, index, (int)value);
     };
     // pop
     opcode_table[0x57] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
@@ -1325,19 +1358,45 @@ void Interpreter::init_opcode_table() {
         exit(1);
     };
     // newarray
-    opcode_table[0xbc] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        fmt::print("newarray not implemented\n");
-        exit(1);
+    opcode_table[0xbc] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo&, Interpreter& interp) {
+        uint8_t atype = code[pc++];
+        IntT count = cur_frame.operand_stack.pop_int();
+        if (count < 0) { fmt::print("newarray: NegativeArraySizeException size={}\n", count); exit(1); }
+        size_t width = 1; std::string elem_type;
+        switch (atype) {
+            case 4: elem_type = "Z"; break; // boolean
+            case 5: elem_type = "C"; break; // char
+            case 6: elem_type = "F"; break; // float
+            case 7: elem_type = "D"; width = 2; break; // double
+            case 8: elem_type = "B"; break; // byte
+            case 9: elem_type = "S"; break; // short
+            case 10: elem_type = "I"; break; // int
+            case 11: elem_type = "J"; width = 2; break; // long
+            default: fmt::print("newarray: unsupported atype {}\n", (int)atype); exit(1);
+        }
+        JVMArray arr(elem_type, (size_t)count, width);
+        RefT ref = (RefT)interp.array_pool.size() + 1;
+        interp.array_pool.emplace(ref, std::move(arr));
+        cur_frame.operand_stack.push_ref(ref);
+        fmt::print("newarray: type {} size {} => ref {}\n", elem_type, count, ref);
     };
     // anewarray
-    opcode_table[0xbd] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        fmt::print("anewarray not implemented\n");
-        exit(1);
+    opcode_table[0xbd] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
+        uint16_t idx = (static_cast<uint16_t>(code[pc]) << 8) | code[pc+1];
+        pc += 2;
+        std::string element_class_name = cf.constant_pool.get_class_name(idx);
+        IntT count = cur_frame.operand_stack.pop_int();
+        if (count < 0) { fmt::print("anewarray: NegativeArraySizeException size={}\n", count); exit(1); }
+        RefT array_ref = interp.new_reference_array(element_class_name, (size_t)count);
+        cur_frame.operand_stack.push_ref(array_ref);
+        fmt::print("anewarray: type {} size {} => ref {}\n", element_class_name, count, array_ref);
     };
     // arraylength
-    opcode_table[0xbe] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        fmt::print("arraylength not implemented\n");
-        exit(1);
+    opcode_table[0xbe] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        RefT arrayref = cur_frame.operand_stack.pop_ref();
+        JVMArray& arr = interp.get_array(arrayref);
+        cur_frame.operand_stack.push_int((IntT)arr.len);
+        fmt::print("arraylength: arrayref={} len={}\n", arrayref, (int)arr.len);
     };
     // athrow
     opcode_table[0xbf] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
@@ -1496,12 +1555,14 @@ RefT Interpreter::new_object(const std::string& class_name) {
     object_pool.push_back(obj);
     return object_pool.size() - 1; // 返回对象在池中的索引
 }
+
 // 设置对象字段
 void Interpreter::put_field(RefT obj_ref, const std::string& field, SlotT value) {
     if (obj_ref >= 0 && obj_ref < object_pool.size()) {
         object_pool[obj_ref].fields[field] = value;
     }
 }
+
 // 获取对象字段
 SlotT Interpreter::get_field(RefT obj_ref, const std::string& field) {
     if (obj_ref >= 0 && obj_ref < object_pool.size()) {
@@ -1519,12 +1580,15 @@ SlotT Interpreter::getstatic(const std::string& class_name, const std::string& f
         exit(1);
     }
     auto& [k, v] = *iter;
+    fmt::print("[getstatic] static field {}.{}: {}\n", class_name, field_name, v);
     return v;
 }
 
+// 赋值类静态字段
 void Interpreter::putstatic(const std::string& class_name, const std::string& field_name, const std::string& field_desc, SlotT value) {
     ClassInfo& cf = load_class(class_name);
     cf.staticVars[field_name] = value;
+    fmt::print("[putstatic] static field {}.{}: {}\n", class_name, field_name, value);
     // auto iter = cf.staticVars.find(field_name);
     // if (iter ==  cf.staticVars.end()) {
     //     fmt::print("[putstatic] 找不到静态字段:  {}.{} {}\n", class_name, field_name, field_desc);

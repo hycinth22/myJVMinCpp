@@ -178,6 +178,53 @@ struct JVMObject {
     std::unordered_map<std::string, RefT> fields; // 字段名到值的映射
 };
 
+struct JVMArray: JVMObject {
+    size_t len;
+    size_t element_width_slots; // 1 for 32-bit/ref/char/short/byte/boolean; 2 for long/double
+    std::vector<SlotT> elems; // stored in slots, size = len * element_width_slots
+    JVMArray(std::string &elem_class_name, size_t len)
+    : len(len), element_width_slots(1), elems(len)
+    {
+        class_name = "[]";
+        class_name += elem_class_name;
+    }
+    JVMArray(const std::string &elem_class_name, size_t len, size_t width_slots)
+    : len(len), element_width_slots(width_slots), elems(len * width_slots)
+    {
+        class_name = "[]";
+        class_name += elem_class_name;
+    }
+    SlotT get_slot(size_t index) {
+        if (index >= len) {
+            fmt::print("JVMArray {} get_slot index {} out of range {}", (void*)this, index, len);
+            exit(1);
+        }
+        return elems[index * element_width_slots];
+    }
+    void put_slot(size_t index, SlotT value) {
+        if (index >= len) {
+            fmt::print("JVMArray {} put_slot index {} out of range {}", (void*)this, index, len);
+            exit(1);
+        }
+        elems[index * element_width_slots] = value;
+    }
+    TwoSlotT get_twoslot(size_t index) {
+        if (index >= len) {
+            fmt::print("JVMArray {} get_twoslot index {} out of range {}", (void*)this, index, len);
+            exit(1);
+        }
+        SlotT high = elems[index * element_width_slots];
+        SlotT low = elems[index * element_width_slots + 1];
+        return ((TwoSlotT)high << SLOT_WIDTH) | low;
+    }
+    void put_twoslot(size_t index, TwoSlotT value) {
+        if (index >= len) {
+            fmt::print("JVMArray {} put_twoslot index {} out of range {}", (void*)this, index, len);
+            exit(1);
+        }
+        elems[index * element_width_slots] = (SlotT)(value >> SLOT_WIDTH);
+        elems[index * element_width_slots + 1] = (SlotT)(value & 0xFFFFFFFF);
+    }
 };
 
 class JVMContext {

@@ -30,6 +30,10 @@ public:
     MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor, std::string* found_in_which_parent_class = nullptr);
     // 分配新对象，返回对象引用（索引）
     RefT new_object(const std::string &class_name);
+    // 分配引用类型数组，返回数组引用
+    RefT new_reference_array(const std::string& element_class_name, size_t len);
+    // 获取数组引用
+    JVMArray& get_array(RefT ref) { return array_pool.at(ref); }
     // 根据对象引用获取对象索引
     JVMObject& get_object(RefT ref) {
         // 检查索引合法性
@@ -61,6 +65,7 @@ private:
     // 对象池，包含堆对象和
     std::vector<JVMObject> object_pool;
     std::unordered_map<RefT, Monitor> object_monitor_info;
+    std::unordered_map<RefT, JVMArray> array_pool;
 
     using OpcodeHandler = std::function<void(JVMContext&, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&)>;
     std::vector<OpcodeHandler> opcode_table;
