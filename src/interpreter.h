@@ -19,7 +19,7 @@ public:
     // 执行指定方法
     std::optional<SlotT> execute(const std::string& class_name, const std::string& method_name, const std::string& method_desc, const std::vector<SlotT>& args);
     // 根据方法名和描述符查找方法
-    MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor);
+    MethodInfo* find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor, std::string* found_in_which_parent_class = nullptr);
     // 分配新对象，返回对象引用（索引）
     RefT new_object(const std::string &class_name);
     // 根据对象引用获取对象索引

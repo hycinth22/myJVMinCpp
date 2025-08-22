@@ -23,9 +23,11 @@ uint16_t read_u2_from_code(const std::vector<uint8_t>& code, size_t pc) {
 }
 
 // 根据方法名和描述符查找方法
-MethodInfo* Interpreter::find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor) {
+MethodInfo* Interpreter::find_method(ClassInfo& cf, const std::string& name, const std::string& descriptor, std::string* found_in_which_parent_class) {
     for (auto& m : cf.methods) {
         if (m.name == name && m.descriptor == descriptor) {
+            if(found_in_which_parent_class)
+                *found_in_which_parent_class = cf.constant_pool.get_class_name(cf.this_class);
             return &m;
         }
     }
