@@ -1306,8 +1306,8 @@ void Interpreter::init_opcode_table() {
     opcode_table[0xbb] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
         uint16_t idx = (static_cast<uint16_t>(code[pc]) << 8) | code[pc+1]; // 常量池索引（2字节，大端序）
         pc += 2;
-        const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
-        std::string class_name = cf.constant_pool.get_class_name(cp_entry.class_name_index);
+
+        std::string class_name = cf.constant_pool.get_class_name(idx);
         RefT obj_ref = interp.new_object(class_name);
         cur_frame.operand_stack.push(obj_ref);
         fmt::print("alloc new object {} for class {}\n", obj_ref, class_name);
