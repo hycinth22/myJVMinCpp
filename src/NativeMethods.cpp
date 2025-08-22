@@ -16,19 +16,21 @@ NativeMethodFunc find_native(const std::string& class_name, const std::string& m
 }
 
 // hashCode: 返回对象引用本身作为hash
-void Object_hashCode(Frame& frame, Interpreter&) {
+std::optional<SlotT> Object_hashCode(Frame& frame, Interpreter&) {
     RefT objref = frame.local_vars.get_ref(0);
     frame.operand_stack.push(objref);
+    fmt::print("Object_hashCode {}\n", objref);
+    return {};
 }
 
 // getClass: 返回Class对象引用
-void Object_getClass(Frame& frame, Interpreter& interp) {
+std::optional<SlotT> Object_getClass(Frame& frame, Interpreter& interp) {
     // 获取 this 指针
     RefT objref = frame.local_vars.get_ref(0);
     fmt::print("Object_getClass {}\n", objref);
-    // 获取对象的类名
-    const JVMObject& obj = interp.get_object(objref);
-    std::string class_name = obj.class_name;
+    // // 获取对象的类名
+    // const JVMObject& obj = interp.get_object(objref);
+    // std::string class_name = obj.class_name;
 
     // 创建一个 java/lang/Class 对象
     int class_obj_ref = interp.new_object("java/lang/Class");
@@ -38,20 +40,29 @@ void Object_getClass(Frame& frame, Interpreter& interp) {
     // class_obj.fields["name"] = class_name;
 
     // 压入操作数栈
-    frame.operand_stack.push(class_obj_ref);
+    return class_obj_ref;
 }
 
 // clone: 返回自身克隆
-void Object_clone(Frame& frame, Interpreter& interp) {
+std::optional<SlotT> Object_clone(Frame& frame, Interpreter& interp) {
     RefT objref = frame.local_vars.get_ref(0);
     RefT new_obj_ref = interp.shallow_clone_object(objref); 
     frame.operand_stack.push(objref);
+    fmt::print("Object_clone {} {}\n", objref, new_obj_ref);
+    return {};
+}
+
+std::optional<SlotT> Object_registerNatives(Frame& frame, Interpreter& interp) {
+    RefT objref = frame.local_vars.get_ref(0);
+    fmt::print("Object_registerNatives {}\n", objref);
+    // todo
+    return {};
 }
 
 // // notify/notifyAll/wait: 先做空实现
-// void Object_notify(Frame&, Interpreter& interp) {}
-// void Object_notifyAll(Frame&, Interpreter& interp) {}
-// void Object_wait(Frame&, Interpreter& interp) {}
+// std::optional<SlotT> Object_notify(Frame&, Interpreter& interp) { return {}; }
+// std::optional<SlotT> Object_notifyAll(Frame&, Interpreter& interp) { return {}; }
+// std::optional<SlotT> Object_wait(Frame&, Interpreter& interp) { return {}; }
 
 // 注册所有内置native方法
 void register_builtin_natives() {
@@ -63,4 +74,6 @@ void register_builtin_natives() {
     // register_native("java/lang/Object", "wait", "()V", Object_wait);
     // register_native("java/lang/Object", "wait", "(J)V", Object_wait);
     // register_native("java/lang/Object", "wait", "(JI)V", Object_wait);
+    register_native("java/lang/Object", "registerNatives", "()V", Object_registerNatives);
+    register_native("java/lang/System", "registerNatives", "()V", Object_registerNatives);
 }
