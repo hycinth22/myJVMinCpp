@@ -7,6 +7,7 @@
 #include <memory>
 #include <stack>
 #include <map>
+#include <unordered_map>
 using ByteT = int8_t;
 using ShortT = int16_t;
 using IntT = int32_t;
@@ -164,7 +165,9 @@ struct Frame {
 
 struct JVMObject {
     std::string class_name;
-    std::map<std::string, RefT> fields; // 字段名到值的映射
+    std::unordered_map<std::string, RefT> fields; // 字段名到值的映射
+};
+
 };
 
 class JVMThread {
