@@ -133,15 +133,33 @@ std::optional<ClassInfo> ClassFileParser::parse(const std::string& filename) {
     // 解析字段
     uint16_t fields_count = read_u2(in);
     for (int i = 0; i < fields_count; ++i) {
-        uint16_t field_access_flags= read_u2(in);
+        uint16_t field_access_flags = read_u2(in);
         uint16_t field_name_index = read_u2(in);
         uint16_t field_descriptor_index = read_u2(in);
         uint16_t field_attributes_count = read_u2(in);
-        for (int i = 0; i < field_attributes_count; ++i) {
-            uint16_t attribute_name_index= read_u2(in);
-            uint16_t attribute_length = read_u4(in);
-            in.ignore(attribute_length);
+
+        FieldInfo field;
+        field.access_flags = field_access_flags;
+        field.name = class_file.constant_pool.get_utf8_str(field_name_index);
+        field.descriptor = class_file.constant_pool.get_utf8_str(field_descriptor_index);
+
+        for (int j = 0; j < field_attributes_count; ++j) {
+            uint16_t attribute_name_index = read_u2(in);
+            uint32_t attribute_length = read_u4(in);
+            std::string attr_name = class_file.constant_pool.get_utf8_str(attribute_name_index);
+            if (attr_name == "ConstantValue") {
+                if (attribute_length != 2) {
+                    throw std::runtime_error("Invalid ConstantValue attribute length");
+                }
+                uint16_t constantvalue_index = read_u2(in);
+                field.has_constant_value = true;
+                field.constantvalue_index = constantvalue_index;
+            } else {
+                in.ignore(attribute_length);
+            }
         }
+
+        class_file.fields.push_back(std::move(field));
     }
 
     // 解析方法

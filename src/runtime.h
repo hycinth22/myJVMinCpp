@@ -36,9 +36,18 @@ struct MethodInfo {
     uint16_t max_locals;
 };
 
+struct FieldInfo {
+    uint16_t access_flags;
+    std::string name;
+    std::string descriptor;
+    bool has_constant_value = false;
+    uint16_t constantvalue_index = 0; // index into constant pool
+};
+
 struct ClassInfo {
     ConstantPool constant_pool;
     std::vector<MethodInfo> methods;
+    std::vector<FieldInfo> fields;
     uint16_t majorVer, minorVer;
     ConstIdxT this_class, super_class;
     std::unordered_map<std::string, RefT> staticVars;
