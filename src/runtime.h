@@ -41,6 +41,7 @@ struct ClassInfo {
     std::vector<MethodInfo> methods;
     uint16_t majorVer, minorVer;
     ConstIdxT this_class, super_class;
+    std::unordered_map<std::string, RefT> staticVars;
 };
 
 class LocalVars {

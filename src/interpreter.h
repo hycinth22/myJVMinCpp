@@ -34,6 +34,10 @@ public:
     void put_field(RefT obj_ref, const std::string& field, SlotT value);
     // 获取对象字段
     SlotT get_field(RefT obj_ref, const std::string& field);
+    // 获取类静态字段
+    SlotT getstatic(const std::string& class_name, const std::string& field_name, const std::string& field_desc);
+    // 赋值类静态字段
+    void putstatic(const std::string& class_name, const std::string& field_name, const std::string& field_desc, SlotT value);
     // 浅克隆
     RefT shallow_clone_object(RefT objref) {
         const JVMObject& obj = get_object(objref);
@@ -52,8 +56,6 @@ private:
     using OpcodeHandler = std::function<void(JVMContext&, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&)>;
     std::vector<OpcodeHandler> opcode_table;
     void init_opcode_table();
-
-    void resolve_getstatic(const ClassInfo& cf, ConstIdxT index, Frame& frame);
     void execute_instruction(const std::vector<ConstantPoolInfo>& constant_pool, const std::vector<uint8_t>& code, size_t& pc, std::vector<SlotT>& stack, std::vector<SlotT>& locals);
     std::optional<SlotT> _execute(JVMContext& context, ClassInfo& cf, const MethodInfo& method, const std::vector<SlotT>& args);
 

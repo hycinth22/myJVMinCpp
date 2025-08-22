@@ -1147,13 +1147,35 @@ void Interpreter::init_opcode_table() {
     opcode_table[0xb2] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
         uint16_t idx = (code[pc] << 8) | code[pc+1];
         pc += 2;
-        interp.resolve_getstatic(cf, idx, cur_frame);
+
+        auto& fieldref = cf.constant_pool[idx];
+        ConstIdxT class_idx = fieldref.fieldref_class_index;
+        ConstIdxT name_type_idx = fieldref.fieldref_name_type_index;
+
+        std::string class_name = cf.constant_pool.get_class_name(class_idx);
+        auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+
+        fmt::print("getstatic: class_name:{} field_name:{} field_desc:{}\n", class_name, field_name, field_desc);
+        SlotT v = interp.getstatic(class_name, field_name, field_desc);
+
+        cur_frame.operand_stack.push(v);
     };
     // putstatic
     opcode_table[0xb3] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
         uint16_t idx = (code[pc] << 8) | code[pc+1];
         pc += 2;
-        fmt::print("putstatic: idx={}\n", idx); // TODO: 实现静态字段赋值
+
+        auto& fieldref = cf.constant_pool[idx];
+        ConstIdxT class_idx = fieldref.fieldref_class_index;
+        ConstIdxT name_type_idx = fieldref.fieldref_name_type_index;
+
+        std::string class_name = cf.constant_pool.get_class_name(class_idx);
+        auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
+
+        SlotT v = cur_frame.operand_stack.pop();
+
+        fmt::print("putstatic: class_name:{} field_name:{} field_desc:{} val:{}\n", class_name, field_name, field_desc, v);
+        interp.putstatic(class_name, field_name, field_desc, v);
     };
     // getfield
     opcode_table[0xb4] = [](JVMContext& context, Frame& cur_frame, size_t& pc, const std::vector<uint8_t>& code, const ClassInfo& cf, Interpreter& interp) {
@@ -1191,13 +1213,6 @@ void Interpreter::init_opcode_table() {
         std::string class_name = cf.constant_pool.get_utf8_str(cf.constant_pool[class_idx].class_name_index);
         auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
 
-        // 特殊处理System.out.println
-        if (class_name == "java/io/PrintStream" && method_name == "println") {
-            SlotT val = cur_frame.operand_stack.pop(); // 要打印的值
-            RefT obj_ref = cur_frame.operand_stack.pop(); // System.out对象引用
-            fmt::print("[System.out.println] {}\n", val);
-            return;
-        }
         fmt::print("[invokevirtual] classname:{} method_name:{} method_desc:{}\n", class_name.c_str(), method_name.c_str(), method_desc.c_str());
 
         // 弹出参数
@@ -1229,11 +1244,6 @@ void Interpreter::init_opcode_table() {
         auto class_name = cf.constant_pool.get_class_name(methodref_class_index);
         auto [method_name, method_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
         fmt::print("[invokespecial] idx{} classname:{} method_name:{} method_desc:{}\n", idx, class_name, method_name, method_desc);
-
-        if (class_name=="java/lang/Object" && method_name=="<init>") {
-            // todo: remove here if implement multilclass
-            return;
-        }
 
         // 弹出参数
         size_t arg_count = count_method_args(method_desc);
@@ -1471,24 +1481,27 @@ SlotT Interpreter::get_field(RefT obj_ref, const std::string& field) {
     return 0;
 }
 
-// 处理getstatic
-void Interpreter::resolve_getstatic(const ClassInfo& cf, ConstIdxT index, Frame& frame) {
-    // 解析常量池
-    const ConstantPoolInfo& fieldref = cf.constant_pool[index];
-    ConstIdxT class_idx = fieldref.fieldref_class_index;
-    ConstIdxT name_type_idx = fieldref.fieldref_name_type_index;
-
-    std::string class_name = cf.constant_pool.get_class_name(class_idx);
-    auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);
-
-    // 特殊处理 System.out
-    if (class_name == "java/lang/System" && field_name == "out" && field_desc == "Ljava/io/PrintStream;") {
-        // 压入一个特殊的PrintStream对象引用
-        frame.operand_stack.push(0xCAFEBABE);
-    } else {
+// 获取类静态字段
+SlotT Interpreter::getstatic(const std::string& class_name, const std::string& field_name, const std::string& field_desc) {
+    const ClassInfo& cf = load_class(class_name);
+    auto iter = cf.staticVars.find(field_name);
+    if (iter ==  cf.staticVars.end()) {
         fmt::print("[getstatic] 找不到静态字段:  {}.{} {}\n", class_name, field_name, field_desc);
-        frame.operand_stack.push(0); // todo: 抛异常
+        exit(1);
     }
+    auto& [k, v] = *iter;
+    return v;
 }
 
+void Interpreter::putstatic(const std::string& class_name, const std::string& field_name, const std::string& field_desc, SlotT value) {
+    ClassInfo& cf = load_class(class_name);
+    cf.staticVars[field_name] = value;
+    // auto iter = cf.staticVars.find(field_name);
+    // if (iter ==  cf.staticVars.end()) {
+    //     fmt::print("[putstatic] 找不到静态字段:  {}.{} {}\n", class_name, field_name, field_desc);
+    //     exit(1);
+    // }
+    // auto& [k, v] = *iter;
+    // v = value;
+}
 
