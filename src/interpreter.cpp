@@ -1357,14 +1357,37 @@ void Interpreter::init_opcode_table() {
         exit(1);
     };
     // monitorenter
-    opcode_table[0xc2] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        fmt::print("monitorenter not implemented\n");
-        exit(1);
+    opcode_table[0xc2] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        RefT objref = cur_frame.operand_stack.pop_ref();
+        // if (objref == 0 || objref == (RefT)-1) {
+        //     fmt::print("monitorenter: NullPointerException (objref={})\n", objref);
+        //     exit(1);
+        // }
+        auto it = interp.object_monitor_info.find(objref);
+        if (it == interp.object_monitor_info.end()) {
+            interp.object_monitor_info.emplace(objref, Monitor{objref});
+            it = interp.object_monitor_info.find(objref);
+        }
+        it->second.count += 1;
+        fmt::print("monitorenter: objref={} count={}\n", objref, it->second.count);
     };
     // monitorexit
-    opcode_table[0xc3] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
-        fmt::print("monitorexit not implemented\n");
-        exit(1);
+    opcode_table[0xc3] = [](JVMContext& context, Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter& interp) {
+        RefT objref = cur_frame.operand_stack.pop_ref();
+        // if (objref == 0 || objref == (RefT)-1) {
+        //     fmt::print("monitorexit: NullPointerException (objref={})\n", objref);
+        //     exit(1);
+        // }
+        auto it = interp.object_monitor_info.find(objref);
+        if (it == interp.object_monitor_info.end() || it->second.count <= 0) {
+            fmt::print("monitorexit: IllegalMonitorStateException (objref={})\n", objref);
+            exit(1);
+        }
+        it->second.count -= 1;
+        fmt::print("monitorexit: objref={} count={}\n", objref, it->second.count);
+        if (it->second.count == 0) {
+            interp.object_monitor_info.erase(it);
+        }
     };
     // wide
     opcode_table[0xc4] = [](JVMContext& context, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {

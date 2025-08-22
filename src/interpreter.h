@@ -6,11 +6,18 @@
 #include <memory>
 #include <stack>
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <optional>
 #include <functional>
 #include "runtime.h"
 #include "ClassLoader.h"
+
+struct Monitor {
+    RefT objref;
+    int count;
+    Monitor(RefT objref) : objref(objref), count(0) {}
+};
 
 class Interpreter {
 public:
@@ -51,8 +58,9 @@ public:
         return new_obj_ref;
     }
 private:
-    // 对象池，包含堆对象和static对象
+    // 对象池，包含堆对象和
     std::vector<JVMObject> object_pool;
+    std::unordered_map<RefT, Monitor> object_monitor_info;
 
     using OpcodeHandler = std::function<void(JVMContext&, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&)>;
     std::vector<OpcodeHandler> opcode_table;
