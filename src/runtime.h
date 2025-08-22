@@ -16,15 +16,16 @@ using ULongT = uint64_t;
 using CharT = uint16_t;
 using FloatT = float;
 using DoubleT = double;
-using RefT = int32_t;
+using RefT = uint32_t;
 using SlotT = uint32_t;
 using TwoSlotT = uint64_t;
+using LocalIdxT = size_t;
+using OpCodeT = uint8_t;
 const size_t SLOT_WIDTH = 32;
 
 const uint16_t ACC_NATIVE = 0x0100;
 const uint16_t ACC_ABSTRACT = 0x0400;
 
-// 方法信息结构
 struct MethodInfo {
     uint16_t access_flags;
     std::string name;
@@ -34,81 +35,78 @@ struct MethodInfo {
     uint16_t max_locals;
 };
 
-// 方法信息结构
 struct ClassInfo {
     ConstantPool constant_pool;
     std::vector<MethodInfo> methods;
     uint16_t majorVer, minorVer;
-    uint16_t this_class, super_class;
+    ConstIdxT this_class, super_class;
 };
 
-// 局部变量表（本地变量区）
 class LocalVars {
 public:
     std::vector<SlotT> vars;
-    LocalVars(size_t size) : vars(size, 0) {}
-    SlotT& operator[](size_t i) { return vars[i]; }
-    LongT get_long(size_t i) const {
+    LocalVars(LocalIdxT size) : vars(size, 0) {}
+    SlotT& operator[](LocalIdxT i) { return vars[i]; }
+    LongT get_long(LocalIdxT i) const {
         return get2(i);
     }
-    void set_long(size_t i, LongT v) {
+    void set_long(LocalIdxT i, LongT v) {
         set2(i, v);
     }
-    DoubleT get_double(size_t i) const {
+    DoubleT get_double(LocalIdxT i) const {
         union { DoubleT d; TwoSlotT l; } u;
         SlotT low = vars[i+1];
         SlotT high = vars[i];
         u.l = ((TwoSlotT)high << SLOT_WIDTH) | low;
         return u.d;
     }
-    void set_double(size_t i, DoubleT d) {
+    void set_double(LocalIdxT i, DoubleT d) {
         union { DoubleT d; TwoSlotT l; } u;
         u.d = d;
         vars[i] = (SlotT)(u.l >> SLOT_WIDTH);
         vars[i+1] = (SlotT)(u.l & 0xFFFFFFFF);
     }
-    void set_uint(size_t i, UIntT v) {
+    void set_uint(LocalIdxT i, UIntT v) {
         vars[i] = v;
     }
-    UIntT get_uint(size_t i) const {
+    UIntT get_uint(LocalIdxT i) const {
         return vars[i];
     }
     // int
-    void set_int(size_t i, IntT v) { vars[i] = v; }
-    IntT get_int(size_t i) const { return vars[i]; }
+    void set_int(LocalIdxT i, IntT v) { vars[i] = v; }
+    IntT get_int(LocalIdxT i) const { return vars[i]; }
     // short
-    void set_short(size_t i, ShortT v) { vars[i] = static_cast<SlotT>(v); }
-    ShortT get_short(size_t i) const { return static_cast<ShortT>(vars[i]); }
+    void set_short(LocalIdxT i, ShortT v) { vars[i] = static_cast<SlotT>(v); }
+    ShortT get_short(LocalIdxT i) const { return static_cast<ShortT>(vars[i]); }
     // float
-    void set_float(size_t i, FloatT v) {
+    void set_float(LocalIdxT i, FloatT v) {
         union { FloatT f; UIntT u; } u;
         u.f = v;
         vars[i] = u.u;
     }
-    FloatT get_float(size_t i) const {
+    FloatT get_float(LocalIdxT i) const {
         union { FloatT f; UIntT u; } u;
         u.u = vars[i];
         return u.f;
     }
     // ref
-    void set_ref(size_t i, RefT v) { vars[i] = v; }
-    RefT get_ref(size_t i) const { return vars[i]; }
+    void set_ref(LocalIdxT i, RefT v) { vars[i] = v; }
+    RefT get_ref(LocalIdxT i) const { return vars[i]; }
     // char
-    void set_char(size_t i, CharT v) { vars[i] = v; }
-    CharT get_char(size_t i) const { return static_cast<CharT>(vars[i]); }
+    void set_char(LocalIdxT i, CharT v) { vars[i] = v; }
+    CharT get_char(LocalIdxT i) const { return static_cast<CharT>(vars[i]); }
 private:
-    int64_t get2(size_t i) const {
+    LongT get2(LocalIdxT i) const {
         SlotT low = vars[i+1];
         SlotT high = vars[i];
         return ((TwoSlotT)high << SLOT_WIDTH) | low;
     }
-    void set2(size_t i, TwoSlotT v) {
+    void set2(LocalIdxT i, TwoSlotT v) {
         vars[i] = (SlotT)(v >> SLOT_WIDTH);
         vars[i+1] = (SlotT)(v & 0xFFFFFFFF);
     }
 };
 
-// 操作数栈
 class OperandStack {
 public:
     std::vector<SlotT> stack;
@@ -123,7 +121,7 @@ public:
     void push_double(DoubleT d) {
         union { DoubleT d; TwoSlotT l; } u;
         u.d = d;
-        push2(static_cast<int64_t>(u.l));
+        push2(static_cast<LongT>(u.l));
     }
     DoubleT pop_double() {
         union { DoubleT d; TwoSlotT l; } u;
@@ -155,7 +153,6 @@ private:
     }
 };
 
-// 栈帧（方法调用帧）
 struct Frame {
     LocalVars local_vars;
     OperandStack operand_stack;
@@ -165,13 +162,11 @@ struct Frame {
     Frame(size_t max_locals, size_t max_stack, const ClassInfo &class_info, const MethodInfo& method_info) : local_vars(max_locals), operand_stack(), pc(0), method_info(method_info), class_info(class_info)  {}
 };
 
-// JVM对象模型
 struct JVMObject {
     std::string class_name;
-    std::map<std::string, int32_t> fields; // 字段名到值的映射
+    std::map<std::string, RefT> fields; // 字段名到值的映射
 };
 
-// JVM线程
 class JVMThread {
 public:
     std::stack<Frame> call_stack;

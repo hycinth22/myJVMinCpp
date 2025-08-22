@@ -90,7 +90,7 @@ void Interpreter::init_opcode_table() {
         fmt::print("iconst_m1\n");
     };
     // iconst_0 ~ iconst_5
-    for (uint8_t opcode = 0x03; opcode <= 0x08; ++opcode) {
+    for (OpCodeT opcode = 0x03; opcode <= 0x08; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             IntT constval = opcode - 0x03;
             cur_frame.operand_stack.push(constval);
@@ -98,7 +98,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // lconst_0 ~ lconst_1
-    for (uint8_t opcode = 0x09; opcode <= 0x0a; ++opcode) {
+    for (OpCodeT opcode = 0x09; opcode <= 0x0a; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             LongT constval = opcode - 0x09;
             cur_frame.operand_stack.push_long(constval);
@@ -150,6 +150,11 @@ void Interpreter::init_opcode_table() {
         if (cpe.tag == ConstantType::INTEGER || cpe.tag == ConstantType::FLOAT) {
             int32_t val = cpe.integerOrFloat;
             cur_frame.operand_stack.push(val);
+        // } if (cpe.tag == ConstantType::STRING) {
+        //     std::string str = cf.constant_pool.get_utf8_str(cpe.string_index);
+        //     fmt::print("[ldc] {}\n", str);
+        //     RefT objref = 0;
+        //     cur_frame.operand_stack.push(objref);
         } else {
             fmt::print("[ldc] 暂不支持的常量类型 tag={}\n", (int)cpe.tag);
             exit(1);
@@ -216,7 +221,7 @@ void Interpreter::init_opcode_table() {
         fmt::print("aload {}\n", idx);
     };
     // iload_0 ~ iload_3
-    for (uint8_t opcode = 0x1a; opcode <= 0x1d; ++opcode) {
+    for (OpCodeT opcode = 0x1a; opcode <= 0x1d; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x1a;
             cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
@@ -224,7 +229,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // lload_0 ~ lload_3
-    for (uint8_t opcode = 0x1e; opcode <= 0x21; ++opcode) {
+    for (OpCodeT opcode = 0x1e; opcode <= 0x21; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x1e;
             LongT v = cur_frame.local_vars.get_long(local_index);
@@ -233,7 +238,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // fload_0 ~ fload_3
-    for (uint8_t opcode = 0x22; opcode <= 0x25; ++opcode) {
+    for (OpCodeT opcode = 0x22; opcode <= 0x25; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x22;
             cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
@@ -241,7 +246,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // dload_0 ~ dload_3
-    for (uint8_t opcode = 0x26; opcode <= 0x29; ++opcode) {
+    for (OpCodeT opcode = 0x26; opcode <= 0x29; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x26;
             DoubleT v = cur_frame.local_vars.get_double(local_index);
@@ -250,7 +255,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // aload_0 ~ aload_3: Load reference from local variable
-    for (uint8_t opcode = 0x2a; opcode <= 0x2d; ++opcode) {
+    for (OpCodeT opcode = 0x2a; opcode <= 0x2d; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x2a;
             cur_frame.operand_stack.push(cur_frame.local_vars[local_index]);
@@ -349,7 +354,7 @@ void Interpreter::init_opcode_table() {
         fmt::print("astore {}\n", idx);
     };
     // istore_0 ~ istore_3: Store int into local variable
-    for (uint8_t opcode = 0x3b; opcode <= 0x3e; ++opcode) {
+    for (OpCodeT opcode = 0x3b; opcode <= 0x3e; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x3b;
             cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
@@ -357,7 +362,7 @@ void Interpreter::init_opcode_table() {
         };
     }
    // lstore_0 ~ lstore_3: Store long into local variable
-    for (uint8_t opcode = 0x3f; opcode <= 0x42; ++opcode) {
+    for (OpCodeT opcode = 0x3f; opcode <= 0x42; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x3f;
             LongT v = cur_frame.operand_stack.pop_long();
@@ -366,7 +371,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // fstore_0 ~ fstore_3: Store float into local variable
-    for (uint8_t opcode = 0x43; opcode <= 0x46; ++opcode) {
+    for (OpCodeT opcode = 0x43; opcode <= 0x46; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x43;
             cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
@@ -374,7 +379,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // dstore_0 ~ dstore_3: Store double into local variable
-    for (uint8_t opcode = 0x47; opcode <= 0x4a; ++opcode) {
+    for (OpCodeT opcode = 0x47; opcode <= 0x4a; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x47;
             DoubleT v = cur_frame.operand_stack.pop_double();
@@ -383,7 +388,7 @@ void Interpreter::init_opcode_table() {
         };
     }
     // astore_0 ~ astore_3: Store reference into local variable
-    for (uint8_t opcode = 0x4b; opcode <= 0x4e; ++opcode) {
+    for (OpCodeT opcode = 0x4b; opcode <= 0x4e; ++opcode) {
         opcode_table[opcode] = [opcode](Frame& cur_frame, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&) {
             size_t local_index = opcode - 0x4b;
             cur_frame.local_vars[local_index] = cur_frame.operand_stack.pop();
@@ -1290,7 +1295,7 @@ void Interpreter::init_opcode_table() {
         pc += 2;
         const ConstantPoolInfo& cp_entry = cf.constant_pool[idx];
         std::string class_name = cf.constant_pool.get_class_name(cp_entry.class_name_index);
-        int obj_ref = interp.new_object(class_name);
+        RefT obj_ref = interp.new_object(class_name);
         cur_frame.operand_stack.push(obj_ref);
         fmt::print("alloc new object {} for class {}\n", obj_ref, class_name);
     };
@@ -1433,7 +1438,7 @@ std::optional<SlotT> Interpreter::_execute(ClassInfo& entry_class, const MethodI
                 fmt::print("pc reach code end but no return");
                 exit(1);
             }
-            uint8_t opcode = code[pc++];
+            OpCodeT opcode = code[pc++];
             fmt::print(" pc 0x{:x} op 0x{:x} \n", pc, opcode);
             opcode_table[opcode](cur_frame, pc, code, classinfo, *this);
             cur_frame.pc = pc;
@@ -1443,20 +1448,20 @@ std::optional<SlotT> Interpreter::_execute(ClassInfo& entry_class, const MethodI
 }
 
 // 分配新对象，返回对象引用（索引）
-int Interpreter::new_object(const std::string& class_name) {
+RefT Interpreter::new_object(const std::string& class_name) {
     JVMObject obj;
     obj.class_name = class_name;
     object_pool.push_back(obj);
     return object_pool.size() - 1; // 返回对象在池中的索引
 }
 // 设置对象字段
-void Interpreter::put_field(int obj_ref, const std::string& field, SlotT value) {
+void Interpreter::put_field(RefT obj_ref, const std::string& field, SlotT value) {
     if (obj_ref >= 0 && obj_ref < object_pool.size()) {
         object_pool[obj_ref].fields[field] = value;
     }
 }
 // 获取对象字段
-SlotT Interpreter::get_field(int obj_ref, const std::string& field) {
+SlotT Interpreter::get_field(RefT obj_ref, const std::string& field) {
     if (obj_ref >= 0 && obj_ref < object_pool.size()) {
         return object_pool[obj_ref].fields[field];
     }
@@ -1464,11 +1469,11 @@ SlotT Interpreter::get_field(int obj_ref, const std::string& field) {
 }
 
 // 处理getstatic
-void Interpreter::resolve_getstatic(const ClassInfo& cf, uint16_t index, Frame& frame) {
+void Interpreter::resolve_getstatic(const ClassInfo& cf, ConstIdxT index, Frame& frame) {
     // 解析常量池
     const ConstantPoolInfo& fieldref = cf.constant_pool[index];
-    uint16_t class_idx = fieldref.fieldref_class_index;
-    uint16_t name_type_idx = fieldref.fieldref_name_type_index;
+    ConstIdxT class_idx = fieldref.fieldref_class_index;
+    ConstIdxT name_type_idx = fieldref.fieldref_name_type_index;
 
     std::string class_name = cf.constant_pool.get_class_name(class_idx);
     auto [field_name, field_desc] = cf.constant_pool.get_name_and_type(name_type_idx);

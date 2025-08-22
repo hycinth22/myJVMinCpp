@@ -5,6 +5,7 @@
 #include <vector>
 #include "fmt/core.h"
 
+using ConstIdxT = uint16_t;
 enum ConstantType { 
     CLASS = 7,
     FIELD_REF = 9,
@@ -27,33 +28,33 @@ struct ConstantPoolInfo {
     // 公共字段：类型标识
     uint8_t tag;
     // tag=7: 类名常量
-    uint16_t class_name_index;
+    ConstIdxT class_name_index;
     // tag=9: 字段引用 (Fieldref)
-    uint16_t fieldref_class_index;
-    uint16_t fieldref_name_type_index;
+    ConstIdxT fieldref_class_index;
+    ConstIdxT fieldref_name_type_index;
     // tag=10: 方法引用常量（tag=10）
-    uint16_t methodref_class_index;
-    uint16_t methodref_name_type_index;
+    ConstIdxT methodref_class_index;
+    ConstIdxT methodref_name_type_index;
     // tag=8: String
-    uint16_t string_index;
+    ConstIdxT string_index;
     // tag=3/4: Integer、Float
     uint32_t integerOrFloat;
     // tag=5/6: Long/Double
     uint32_t longOrDouble_high_bytes;
     uint32_t longOrDouble_low_bytes;
     // tag=12: 名称与类型描述符 (NameAndType)
-    uint16_t name_index;
-    uint16_t descriptor_index;
+    ConstIdxT name_index;
+    ConstIdxT descriptor_index;
     // tag=1: UTF-8字符串常量
     std::string utf8_str;
     // tag=15: MethodHandle
     uint8_t reference_kind;
-    uint16_t reference_index;
+    ConstIdxT reference_index;
     // tag=16: MethodType
-    uint16_t descriptor_index_mt;
+    ConstIdxT descriptor_index_mt;
     // tag=18: InvokeDynamic
-    uint16_t bootstrap_method_attr_index;
-    uint16_t name_and_type_index;
+    ConstIdxT bootstrap_method_attr_index;
+    ConstIdxT name_and_type_index;
 };
 
 class ConstantPool {
@@ -73,7 +74,7 @@ class ConstantPool {
             pool.push_back(std::move(c));
         } 
 
-        const std::string& get_utf8_str(uint16_t index) const {
+        const std::string& get_utf8_str(ConstIdxT index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_utf8_str: index {} out of bound", index);
                 exit(1);
@@ -85,7 +86,7 @@ class ConstantPool {
             return pool[index].utf8_str;
         }
 
-        const std::string& get_class_name(uint16_t index) const {
+        const std::string& get_class_name(ConstIdxT index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_class_name: index {} out of bound", index);
                 exit(1);
@@ -97,7 +98,7 @@ class ConstantPool {
             return get_utf8_str(pool[index].class_name_index);
         }
 
-        uint16_t get_string_idx(uint16_t index) const {
+        ConstIdxT get_string_idx(ConstIdxT index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_string_idx: index {} out of bound", index);
                 exit(1);
@@ -110,7 +111,7 @@ class ConstantPool {
         }
 
 
-        std::pair<std::string, std::string> get_name_and_type(uint16_t index) const {
+        std::pair<std::string, std::string> get_name_and_type(ConstIdxT index) const {
             if (index == 0 || index > pool.size()) {
                 fmt::print("ConstantPool.get_name_and_type: index {} out of bound", index);
                 exit(1);
