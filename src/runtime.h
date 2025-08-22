@@ -170,7 +170,7 @@ struct JVMObject {
 
 };
 
-class JVMThread {
+class JVMContext {
 public:
     std::stack<Frame> call_stack;
     void push_frame(const Frame& frame) { 

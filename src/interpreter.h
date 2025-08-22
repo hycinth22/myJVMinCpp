@@ -49,13 +49,13 @@ private:
     // 对象池，包含堆对象和static对象
     std::vector<JVMObject> object_pool;
 
-    using OpcodeHandler = std::function<void(Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&)>;
+    using OpcodeHandler = std::function<void(JVMContext&, Frame&, size_t&, const std::vector<uint8_t>&, const ClassInfo&, Interpreter&)>;
     std::vector<OpcodeHandler> opcode_table;
     void init_opcode_table();
 
     void resolve_getstatic(const ClassInfo& cf, ConstIdxT index, Frame& frame);
     void execute_instruction(const std::vector<ConstantPoolInfo>& constant_pool, const std::vector<uint8_t>& code, size_t& pc, std::vector<SlotT>& stack, std::vector<SlotT>& locals);
-    std::optional<SlotT> _execute(ClassInfo& cf, const MethodInfo& method, const std::vector<SlotT>& args);
+    std::optional<SlotT> _execute(JVMContext& context, ClassInfo& cf, const MethodInfo& method, const std::vector<SlotT>& args);
 
     ClassInfo& load_class(const std::string& class_name) {
         return class_loader.load_class(class_name);
